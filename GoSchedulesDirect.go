@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	//"io"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -175,31 +175,47 @@ type ScheduleResponse struct {
 
 // A Schedule stores the program information for a given stationID
 type Schedule struct {
-	StationId string    `json:"stationID"`
-	Programs  []Program `json:"programs"`
+	StationId string       `json:"stationID"`
+	MetaData  ScheduleMeta `json:"metadata"`
+	Programs  []Program    `json:"programs"`
+}
+
+type ScheduleMeta struct {
+	Modified  string `json:"modified"`
+	MD5       string `json:"md5"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+	Days      int    `json:"days"`
 }
 
 // A Program stores the information to describing a single television program.
 type Program struct {
-	ProgramId           string    `json:"programID"`
-	AirDateTime         time.Time `json:"airDateTime"`
-	Md5                 string    `json:"md5"`
-	Duration            int       `json:"duration"`
-	New                 bool      `json:"new,omitempty"`
-	CableInTheClassroom bool      `json:"cableInTheClassRoom,omitempty"`
-	Catchup             bool      `json:"catchup,omitempty"`   // - typically only found outside of North America
-	Continued           bool      `json:"continued,omitempty"` // - typically only found outside of North America
-	Education           bool      `json:"educational,omitempty"`
-	JoinedInProgress    bool      `json:"joinedInProgress,omitempty"`
-	LeftInProgress      bool      `json:"leftInProgress,omitempty"`
-	Premiere            bool      `json:"premiere,omitempty"`          //- Should only be found in Miniseries and Movie program types.
-	ProgramBreak        bool      `json:"programBreak,omitempty"`      // - Program stops and will restart later (frequently followed by a continued). Typically only found outside of North America.
-	Repeat              bool      `json:"repeat,omitempty"`            // - An encore presentation. Repeat should only be found on a second telecast of sporting events.
-	Signed              bool      `json:"signed,omitempty"`            //- Program has an on-screen person providing sign-language translation.
-	SubjectToBlackout   bool      `json:"subjectToBlackout,omitempty"` //subjectToBlackout
-	TimeApproximate     bool      `json:"timeApproximate,omitempty"`
-	AudioProperties     []string  `json:"audioProperties,omitempty"`
-	VideoProperties     []string  `json:"videoProperties,omitempty"`
+	ProgramId           string          `json:"programID"`
+	AirDateTime         time.Time       `json:"airDateTime"`
+	Md5                 string          `json:"md5"`
+	Duration            int             `json:"duration"`
+	New                 bool            `json:"new,omitempty"`
+	CableInTheClassroom bool            `json:"cableInTheClassRoom,omitempty"`
+	Catchup             bool            `json:"catchup,omitempty"`   // - typically only found outside of North America
+	Continued           bool            `json:"continued,omitempty"` // - typically only found outside of North America
+	Education           bool            `json:"educational,omitempty"`
+	JoinedInProgress    bool            `json:"joinedInProgress,omitempty"`
+	LeftInProgress      bool            `json:"leftInProgress,omitempty"`
+	Premiere            bool            `json:"premiere,omitempty"`          //- Should only be found in Miniseries and Movie program types.
+	ProgramBreak        bool            `json:"programBreak,omitempty"`      // - Program stops and will restart later (frequently followed by a continued). Typically only found outside of North America.
+	Repeat              bool            `json:"repeat,omitempty"`            // - An encore presentation. Repeat should only be found on a second telecast of sporting events.
+	Signed              bool            `json:"signed,omitempty"`            //- Program has an on-screen person providing sign-language translation.
+	SubjectToBlackout   bool            `json:"subjectToBlackout,omitempty"` //subjectToBlackout
+	TimeApproximate     bool            `json:"timeApproximate,omitempty"`
+	AudioProperties     []string        `json:"audioProperties,omitempty"`
+	Syndication         SyndicationType `json:"syndication"`
+	Ratings             ProgramRating   `json:"ratings, omitempty"`
+	ProgramPart         Part            `json:"multipart, omitempty"`
+	VideoProperties     []string        `json:"videoProperties,omitempty"`
+}
+type SyndicationType struct {
+	Source string `json:"source"`
+	Type   string `json:"type"`
 }
 
 type ProgramRating struct {
@@ -207,7 +223,7 @@ type ProgramRating struct {
 	Code string `json:"code"`
 }
 
-type ProgramPart struct {
+type Part struct {
 	PartNumber int `json:"partNumber"`
 	TotalParts int `json:"totalParts"`
 }
@@ -410,8 +426,8 @@ func GetSchedules(token string, stationIds []string, days int) error {
 	//setup the request
 	//req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req, err := http.NewRequest("POST", url, &buffer)
-	//req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Encoding", "deflate")
+	req.Header.Set("Content-Type", "application/json")
+	//req.Header.Set("Accept-Encoding", "deflate,gzip")
 	req.Header.Set("token", token)
 
 	client := &http.Client{}
@@ -433,11 +449,84 @@ func GetSchedules(token string, stationIds []string, days int) error {
 	//create the schedules slice
 	var allSchedules []Schedule
 
+	//readbuffer := bytes.NewBuffer(resp.Body)
+	reader := bufio.NewReader(resp.Body)
+
+	//we need to increase the default reader size to get this in one shot
+	bufio.NewReaderSize(reader, 65536)
+	// there are a few possible loop termination
+	// conditions, so just start with an infinite loop.
+	for {
+		// reader.ReadLine does a buffered read up to a line terminator,
+		// handles either /n or /r/n, and returns just the line without
+		// the /r or /r/n.
+		//line, isPrefix, err := reader.ReadLine()
+		line, err := reader.ReadString('\n')
+
+		fmt.Println(line)
+		// loop termination condition 1:  EOF.
+		// this is the normal loop termination condition.
+		if err == io.EOF {
+			break
+		}
+
+		// loop termination condition 2: some other error.
+		// Errors happen, so check for them and do something with them.
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// loop termination condition 3: line too long to fit in buffer
+		// without multiple reads.  Bufio's default buffer size is 4K.
+		// Chances are if you haven't seen a line terminator after 4k
+		// you're either reading the wrong file or the file is corrupt.
+		//if isPrefix {
+		//	log.Fatal("Error: Unexpected long line reading response")
+		//}
+		//create a TokenResponse struct, return if err
+		//r := new(Schedule)
+		//str := string([]byte(line) + "\r\n")
+		//fmt.Println(str)
+		//decode the response body into the new TokenResponse struct
+		//err = json.NewDecoder(line).Decode(r)
+		//if err != nil {
+		//	fmt.Println("Error decoding line", err)
+		//}
+		//fmt.Println(r.StationId)
+		//allSchedules = append(allSchedules, r)
+		//loop variable to store the "current" schedule
+		var s Schedule
+
+		//decode the scanner bytes into the schedule
+		errUnmarshal := json.Unmarshal([]byte(line), &s)
+		if errUnmarshal != nil {
+			log.Printf("error unmarshaling program: %s\n", errUnmarshal)
+		} else {
+			fmt.Println(s.StationId)
+			allSchedules = append(allSchedules, s)
+		}
+		// success.  The variable line is now a byte slice based on on
+		// bufio's underlying buffer.  This is the minimal churn necessary
+		// to let you look at it, but note! the data may be overwritten or
+		// otherwise invalidated on the next read.  Look at it and decide
+		// if you want to keep it.  If so, copy it or copy the portions
+		// you want before iterating in this loop.  Also note, it is a byte
+		// slice.  Often you will want to work on the data as a string,
+		// and the string type conversion (shown here) allocates a copy of
+		// the data.  It would be safe to send, store, reference, or otherwise
+		// hold on to this string, then continue iterating in this loop.
+		//fmt.Println(string(line))
+	}
+
+	/*  Scanner has a token size limit that schedules direct exceeds
 	//create the scanner to "loop" over the lines in the body
 	scanner := bufio.NewScanner(resp.Body)
 
 	//scanner loop
 	for scanner.Scan() {
+
+		fmt.Println(scanner.Bytes())
+
 		//loop variable to store the "current" schedule
 		var s Schedule
 
@@ -446,40 +535,17 @@ func GetSchedules(token string, stationIds []string, days int) error {
 		if errUnmarshal != nil {
 			log.Printf("error unmarshaling program: %s\n", scanner.Bytes())
 		} else {
+			fmt.Println(s.StationId)
 			allSchedules = append(allSchedules, s)
 		}
 	}
-
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "error reading form resp.Body:", err)
+	}
+	*/
 	for _, sched := range allSchedules {
 		fmt.Println(sched.StationId) //
 	}
-
-	//fmt.Println(scanner.Text())
-	//mySched := new(Schedule)
-	//decode the body into the map
-	//err = json.NewDecoder(scanner.Text()).Decode(&mySched)
-	//var loopSched Schedule
-	//err = json.Unmarshal(scanner.Bytes(), &loopSched)
-	//if err != nil {
-	//	log.Println(err)
-	//fmt.Println(scanner.Text())
-	//}
-	//fmt.Println(loopSched.StationId)
-	//h = append(h, loopSched)
-	//}
-
-	//make the map
-	//h := new([]Schedule)
-	//var h []Schedule
-	//h := new(ScheduleResponse)
-
-	//decode the body into the map
-	//err = json.NewDecoder(resp.Body).Decode(&h)
-	//if err != nil {
-	//	fmt.Println("Error parsing channel response line")
-	//	log.Fatal(err)
-	//	return nil, err
-	//}
 
 	return nil
 }
