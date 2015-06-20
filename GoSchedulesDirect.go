@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	//"os"
 	"strconv"
 	"time"
 )
@@ -209,7 +210,7 @@ type Program struct {
 	TimeApproximate     bool            `json:"timeApproximate,omitempty"`
 	AudioProperties     []string        `json:"audioProperties,omitempty"`
 	Syndication         SyndicationType `json:"syndication"`
-	Ratings             ProgramRating   `json:"ratings, omitempty"`
+	Ratings             []ProgramRating `json:"ratings, omitempty"`
 	ProgramPart         Part            `json:"multipart, omitempty"`
 	VideoProperties     []string        `json:"videoProperties,omitempty"`
 }
@@ -223,9 +224,80 @@ type ProgramRating struct {
 	Code string `json:"code"`
 }
 
+type ProgramMetaItem struct {
+	Season  int `json:"season"`
+	Episode int `json:"episode,omitmepty"`
+}
+
+type ProgramInfo struct {
+	ProgramId string `json:"programID"`
+	Titles    []struct {
+		Title120 string `json:"title120"`
+	} `json:"titles"`
+
+	EventDetails    Details                    `json:"eventDetails"`
+	Descriptions    ProgramDescriptions        `json:"descriptions"`
+	OriginalAirDate string                     `json:"originalAirDate"`
+	EpisodeTitle150 string                     `json:"episodeTitle150"`
+	Metadata        map[string]ProgramMetaItem `json:"metadata"`
+	Movie           Movie                      `json:"movie,omitempty"`
+	Cast            []Person                   `json:"cast"`
+	Crew            []Person                   `json:"crew"`
+	ShowType        string                     `json:"showType"`
+	HasImageArtWork bool                       `json:"hasImageArtwork"`
+	Md5             string                     `json:"md5"`
+}
+
+type Movie struct {
+	Duration      int    `json:"duration"`
+	Year          string `json:"year"`
+	QualityRating []struct {
+		Increment   string `json:"increment"`
+		MaxRating   string `json:"maxRating"`
+		MinRating   string `json:"minRating"`
+		Rating      string `json:"rating"`
+		RatingsBody string `json:"ratingsBody"`
+	} `json:"qualityRating"`
+}
+
+type Person struct {
+	PersonID      string `json:"personId,omitmepty"`
+	NameID        string `json:"nameId,omitempty"`
+	Name          string `json:"name"`
+	Role          string `json:"role"`
+	CharacterName string `json:"characterName,omitempty"`
+	BillingOrder  string `json:"billingOrder"`
+}
+
+type ProgramInfoError struct {
+	Response string    `json:"reponse"`
+	Code     int       `json:"code"`
+	ServerId string    `json:"serverID"`
+	Message  string    `json:"message"`
+	DateTime time.Time `json:"datetime"`
+}
+
+type Details struct {
+	Subtype string
+}
+
+type ProgramDescriptions struct {
+	Description100  []Description `json:"description100,omitempty"`
+	Description1000 []Description `json:"description1000.omitempty"`
+}
+
+type Description struct {
+	DescriptionLanguage string `json:"descriptionLanguage"`
+	Description         string `json:"description"`
+}
 type Part struct {
 	PartNumber int `json:"partNumber"`
 	TotalParts int `json:"totalParts"`
+}
+
+type LastmodifiedRequest struct {
+	StationId string `json:"stationID"`
+	Days      int    `json:"days"`
 }
 
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
@@ -240,6 +312,7 @@ func AddLineup(token string, lineupURI string) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatal(err)
+
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -274,7 +347,7 @@ func DelLineup(token string, lineupURI string) error {
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
 	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("Delete Lineup Response:", string(body))
+	fmt.Println("Delete Lineup Response:	Premiere //- Should only be found in Miniseries and Movie program types.", string(body))
 	return nil
 }
 
@@ -393,10 +466,10 @@ func GetSchedule(token string, stationId string, days int) (*Schedule, error) {
 	return h, nil
 }
 
-// GetSchedule returns the set of schedules requested.  As a whole the response is not valid json,
+// GetSchedules returns the set of schedules requested.  As a whole the response is not valid json,
 // but each individual line is valid.
-func GetSchedules(token string, stationIds []string, days int) error {
-	//func GetSchedule(token string, stationIds []string, days int) ([]Schedule, error) {
+//func GetSchedules(token string, stationIds []string, days int) error {
+func GetSchedules(token string, stationIds []string, days int) ([]Schedule, error) {
 	//func GetSchedule(token string, stationIds []string, days int) (*ScheduleResponse, error) {
 	url := "https://json.schedulesdirect.org/20140530/schedules"
 	fmt.Println("URL:>", url)
@@ -415,16 +488,7 @@ func GetSchedules(token string, stationIds []string, days int) error {
 	}
 	buffer.WriteString("]")
 
-	//debug
-	//fmt.Println(buffer.String())
-
-	//var jsonStr = []byte(`[{"stationID":"` + stationId + `", "days":` + strconv.Itoa(days) + `}]`)
-
-	//debug
-	//fmt.Println(string(jsonStr))
-
 	//setup the request
-	//req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req, err := http.NewRequest("POST", url, &buffer)
 	req.Header.Set("Content-Type", "application/json")
 	//req.Header.Set("Accept-Encoding", "deflate,gzip")
@@ -434,17 +498,13 @@ func GetSchedules(token string, stationIds []string, days int) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatal(err)
-		return err
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		log.Fatal(resp.Status)
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
-
-	//debug lines
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Println(string(body))
 
 	//create the schedules slice
 	var allSchedules []Schedule
@@ -457,13 +517,13 @@ func GetSchedules(token string, stationIds []string, days int) error {
 	// there are a few possible loop termination
 	// conditions, so just start with an infinite loop.
 	for {
-		// reader.ReadLine does a buffered read up to a line terminator,
-		// handles either /n or /r/n, and returns just the line without
-		// the /r or /r/n.
-		//line, isPrefix, err := reader.ReadLine()
+		//ReadString because Schedules Direct puts each schedule on it's own line
+		//each line is a complete json object but not the whole response.
 		line, err := reader.ReadString('\n')
 
-		fmt.Println(line)
+		//debug
+		//fmt.Println(line)
+
 		// loop termination condition 1:  EOF.
 		// this is the normal loop termination condition.
 		if err == io.EOF {
@@ -476,78 +536,119 @@ func GetSchedules(token string, stationIds []string, days int) error {
 			log.Fatal(err)
 		}
 
-		// loop termination condition 3: line too long to fit in buffer
-		// without multiple reads.  Bufio's default buffer size is 4K.
-		// Chances are if you haven't seen a line terminator after 4k
-		// you're either reading the wrong file or the file is corrupt.
-		//if isPrefix {
-		//	log.Fatal("Error: Unexpected long line reading response")
-		//}
-		//create a TokenResponse struct, return if err
-		//r := new(Schedule)
-		//str := string([]byte(line) + "\r\n")
-		//fmt.Println(str)
-		//decode the response body into the new TokenResponse struct
-		//err = json.NewDecoder(line).Decode(r)
-		//if err != nil {
-		//	fmt.Println("Error decoding line", err)
-		//}
-		//fmt.Println(r.StationId)
-		//allSchedules = append(allSchedules, r)
-		//loop variable to store the "current" schedule
+		//create a Schedule variable
 		var s Schedule
 
 		//decode the scanner bytes into the schedule
 		errUnmarshal := json.Unmarshal([]byte(line), &s)
 		if errUnmarshal != nil {
 			log.Printf("error unmarshaling program: %s\n", errUnmarshal)
+			var e ProgramInfoError
+			getError := json.Unmarshal([]byte(line), &e)
+			if getError != nil {
+				fmt.Println("error")
+			}
+
+			fmt.Println(e.Code)
 		} else {
-			fmt.Println(s.StationId)
 			allSchedules = append(allSchedules, s)
 		}
-		// success.  The variable line is now a byte slice based on on
-		// bufio's underlying buffer.  This is the minimal churn necessary
-		// to let you look at it, but note! the data may be overwritten or
-		// otherwise invalidated on the next read.  Look at it and decide
-		// if you want to keep it.  If so, copy it or copy the portions
-		// you want before iterating in this loop.  Also note, it is a byte
-		// slice.  Often you will want to work on the data as a string,
-		// and the string type conversion (shown here) allocates a copy of
-		// the data.  It would be safe to send, store, reference, or otherwise
-		// hold on to this string, then continue iterating in this loop.
-		//fmt.Println(string(line))
 	}
 
-	/*  Scanner has a token size limit that schedules direct exceeds
-	//create the scanner to "loop" over the lines in the body
-	scanner := bufio.NewScanner(resp.Body)
+	return allSchedules, err
+}
 
-	//scanner loop
-	for scanner.Scan() {
+// GetProgramInfo returns the set of program details for the given set of programs
+func GetProgramInfo(token string, programIDs []string) ([]ProgramInfo, error) {
+	url := "https://json.schedulesdirect.org/20140530/programs"
+	fmt.Println("URL:>", url)
 
-		fmt.Println(scanner.Bytes())
+	//buffer to store the json request
+	var buffer bytes.Buffer
 
-		//loop variable to store the "current" schedule
-		var s Schedule
+	//creating the request
+	buffer.WriteString("[")
+	for index, program := range programIDs {
+		//fmt.Println(station)
+		buffer.WriteString(`"`)
+		buffer.WriteString(program)
+		buffer.WriteString(`"`)
+		if index != len(programIDs)-1 {
+			buffer.WriteString(",")
+		}
+	}
+	buffer.WriteString("]")
+
+	//setup the request
+	req, err := http.NewRequest("POST", url, &buffer)
+	//req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Encoding", "deflate")
+	req.Header.Set("token", token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		log.Fatal(resp.Status)
+		return nil, err
+	}
+	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
+
+	//Copy the body to Stdout
+	//_, err = io.Copy(os.Stdout, resp.Body)
+
+	//create the schedules slice
+	var allPrograms []ProgramInfo
+
+	//readbuffer := bytes.NewBuffer(resp.Body)
+	reader := bufio.NewReader(resp.Body)
+
+	//we need to increase the default reader size to get this in one shot
+	bufio.NewReaderSize(reader, 65536)
+	// there are a few possible loop termination
+	// conditions, so just start with an infinite loop.
+	for {
+		//ReadString because Schedules Direct puts each schedule on it's own line
+		//each line is a complete json object but not the whole response.
+		line, err := reader.ReadString('\n')
+
+		//debug
+		fmt.Println(line)
+
+		// loop termination condition 1:  EOF.
+		// this is the normal loop termination condition.
+		if err == io.EOF {
+			break
+		}
+
+		// loop termination condition 2: some other error.
+		// Errors happen, so check for them and do something with them.
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		//create a Schedule variable
+		var s ProgramInfo
 
 		//decode the scanner bytes into the schedule
-		errUnmarshal := json.Unmarshal(scanner.Bytes(), &s)
+		errUnmarshal := json.Unmarshal([]byte(line), &s)
 		if errUnmarshal != nil {
-			log.Printf("error unmarshaling program: %s\n", scanner.Bytes())
+			log.Printf("error unmarshaling program: %s\n", errUnmarshal)
 		} else {
-			fmt.Println(s.StationId)
-			allSchedules = append(allSchedules, s)
+			allPrograms = append(allPrograms, s)
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "error reading form resp.Body:", err)
-	}
-	*/
-	for _, sched := range allSchedules {
-		fmt.Println(sched.StationId) //
-	}
 
-	return nil
+	return allPrograms, err
+}
+
+func GetLastModified(token string, theRequest []LastmodifiedRequest) {
+	url := "https://json.schedulesdirect.org/20140530/schedules/md5"
+	fmt.Println("URL:>", url)
+
 }
 
 // GetLineups returns a LineupResponse which contains all the lineups subscribed
