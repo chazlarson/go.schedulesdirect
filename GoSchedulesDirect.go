@@ -18,6 +18,9 @@ import (
 	"time"
 )
 
+//using an untyped string constant to store api version
+const apiVersion = "20141201"
+
 //The proper SchedulesDirect JSON Service workflow is as follows...
 //------Once the client is in a steady state:-------
 //-Obtain a token
@@ -302,7 +305,8 @@ type LastmodifiedRequest struct {
 
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
 func AddLineup(token string, lineupURI string) error {
-	url := "https://json.schedulesdirect.org" + lineupURI
+	//url := "https://json.schedulesdirect.org" + lineupURI
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,lineupURI)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("PUT", url, nil)
@@ -328,7 +332,8 @@ func AddLineup(token string, lineupURI string) error {
 
 // DelLineup deletes the given lineup uri from the users SchedulesDirect account.
 func DelLineup(token string, lineupURI string) error {
-	url := "https://json.schedulesdirect.org" + lineupURI
+	//url := "https://json.schedulesdirect.org" + lineupURI
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,lineupURI)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("DELETE", url, nil)
@@ -353,8 +358,10 @@ func DelLineup(token string, lineupURI string) error {
 
 // GetHeadends returns the map of headends for the given postal code.
 func GetHeadends(token string, postalCode string) (map[string]Headend, error) {
-	url := "https://json.schedulesdirect.org/20140530/" +
-		"headends?country=USA&postalcode=" + postalCode
+	//url := "https://json.schedulesdirect.org/20140530/" +
+	//	"headends?country=USA&postalcode=" + postalCode
+		url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,
+		                  "headends?country=USA&postalcode=",postalCode)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -389,7 +396,8 @@ func GetHeadends(token string, postalCode string) (map[string]Headend, error) {
 
 //GetChannels returns the channels in a given lineup
 func GetChannels(token string, lineupURI string) (*ChannelResponse, error) {
-	url := "https://json.schedulesdirect.org" + lineupURI
+	//url := "https://json.schedulesdirect.org" + lineupURI
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,lineupURI)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -426,7 +434,7 @@ func GetChannels(token string, lineupURI string) (*ChannelResponse, error) {
 func GetSchedule(token string, stationId string, days int) (*Schedule, error) {
 	//func GetSchedule(token string, stationIds []string, days int) ([]Schedule, error) {
 	//func GetSchedule(token string, stationIds []string, days int) (*ScheduleResponse, error) {
-	url := "https://json.schedulesdirect.org/20140530/schedules"
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,"/schedules")
 	fmt.Println("URL:>", url)
 
 	var jsonStr = []byte(`[{"stationID":"` + stationId + `", "days":` + strconv.Itoa(days) + `}]`)
@@ -471,7 +479,7 @@ func GetSchedule(token string, stationId string, days int) (*Schedule, error) {
 //func GetSchedules(token string, stationIds []string, days int) error {
 func GetSchedules(token string, stationIds []string, days int) ([]Schedule, error) {
 	//func GetSchedule(token string, stationIds []string, days int) (*ScheduleResponse, error) {
-	url := "https://json.schedulesdirect.org/20140530/schedules"
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,"/schedules")
 	fmt.Println("URL:>", url)
 
 	//buffer to store the json request
@@ -560,7 +568,8 @@ func GetSchedules(token string, stationIds []string, days int) ([]Schedule, erro
 
 // GetProgramInfo returns the set of program details for the given set of programs
 func GetProgramInfo(token string, programIDs []string) ([]ProgramInfo, error) {
-	url := "https://json.schedulesdirect.org/20140530/programs"
+	//url := "https://json.schedulesdirect.org/20140530/programs"
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,"/programs")
 	fmt.Println("URL:>", url)
 
 	//buffer to store the json request
@@ -646,7 +655,8 @@ func GetProgramInfo(token string, programIDs []string) ([]ProgramInfo, error) {
 }
 
 func GetLastModified(token string, theRequest []LastmodifiedRequest) {
-	url := "https://json.schedulesdirect.org/20140530/schedules/md5"
+	//url := "https://json.schedulesdirect.org/20140530/schedules/md5"
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,"/schedules/md5" )
 	fmt.Println("URL:>", url)
 
 }
@@ -687,7 +697,8 @@ func GetLineups(token string) (*LineupResponse, error) {
 
 // GetStatus returns a StatusResponse for this account.
 func GetStatus(token string) (*StatusResponse, error) {
-	url := "https://json.schedulesdirect.org/20140530/status"
+	//url := "https://json.schedulesdirect.org/20140530/status"
+	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/status")
 	fmt.Println("URL:>", url)
 	s := new(StatusResponse)
 
@@ -724,7 +735,7 @@ func GetStatus(token string) (*StatusResponse, error) {
 // successfully authenticate.
 func GetToken(username string, password string) (string, error) {
 	//The SchedulesDirect token url
-	url := "https://json.schedulesdirect.org/20140530/token"
+	url := fmt.Sprint("https://json.schedulesdirect.org/",apiVersion,"/token"
 
 	//encrypt the password
 	sha1hexPW := encryptPassword(password)
