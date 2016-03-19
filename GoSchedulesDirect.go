@@ -720,7 +720,7 @@ func GetLineups(token string) (*LineupResponse, error) {
 }
 
 // GetStatus returns a StatusResponse for this account.
-func (c *Client) GetStatus(token string) (*StatusResponse, error) {
+func GetStatus(token string) (*StatusResponse, error) {
 	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/status")
 	fmt.Println("URL:>", url)
 	s := new(StatusResponse)
