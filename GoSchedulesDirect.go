@@ -139,6 +139,9 @@ type Headend struct {
 	Lineups   []Lineup `json:"lineups"`
 }
 
+type HeadendResponse struct {
+    Headends []Headend 
+}
 // A Lineup stores the SD json message containing lineup information.
 type Lineup struct {
 	Lineup    string `json:"lineup,omitempty"`
@@ -197,7 +200,7 @@ type ScheduleResponse struct {
 
 // A Schedule stores the program information for a given stationID
 type Schedule struct {
-	StationId string       `json:"stationID"`
+	StationID string       `json:"stationID"`
 	MetaData  ScheduleMeta `json:"metadata"`
 	Programs  []Program    `json:"programs"`
 }
@@ -212,7 +215,7 @@ type ScheduleMeta struct {
 
 // A Program stores the information to describing a single television program.
 type Program struct {
-	ProgramId           string          `json:"programID"`
+	ProgramID           string          `json:"programID"`
 	AirDateTime         time.Time       `json:"airDateTime"`
 	Md5                 string          `json:"md5"`
 	Duration            int             `json:"duration"`
@@ -411,7 +414,8 @@ func GetHeadends(token string, postalCode string) ([]Headend, error) {
 	//make the map
 	//h := make(map[string]Headend)
 	h := []Headend{}
-
+    //h := new(HeadendResponse)
+    
 	//body, _ := ioutil.ReadAll(resp.Body)
 	//fmt.Println("PostalResponse Body:", string(body))
 
