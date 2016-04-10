@@ -217,10 +217,10 @@ type ScheduleMeta struct {
 
 // A Program stores the information to describing a single television program.
 type Program struct {
-	ProgramID           string          `json:"programID"`
-	AirDateTime         time.Time       `json:"airDateTime"`
-	Md5                 string          `json:"md5"`
-	Duration            int             `json:"duration"`
+	ProgramID           string          `json:"programID,omitempty"`
+	AirDateTime         time.Time       `json:"airDateTime,omitempty"`
+	Md5                 string          `json:"md5,omitempty"`
+	Duration            int             `json:"duration,omitempty"`
 	New                 bool            `json:"new,omitempty"`
 	CableInTheClassroom bool            `json:"cableInTheClassRoom,omitempty"`
 	Catchup             bool            `json:"catchup,omitempty"`   // - typically only found outside of North America
@@ -235,7 +235,7 @@ type Program struct {
 	SubjectToBlackout   bool            `json:"subjectToBlackout,omitempty"` //subjectToBlackout
 	TimeApproximate     bool            `json:"timeApproximate,omitempty"`
 	AudioProperties     []string        `json:"audioProperties,omitempty"`
-	Syndication         SyndicationType `json:"syndication"`
+	Syndication         SyndicationType `json:"syndication,omitempty"`
 	Ratings             []ProgramRating `json:"ratings, omitempty"`
 	ProgramPart         Part            `json:"multipart, omitempty"`
 	VideoProperties     []string        `json:"videoProperties,omitempty"`
