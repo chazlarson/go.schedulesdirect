@@ -112,6 +112,16 @@ type StatusResponse struct {
 	Code           int         `json:"code"`
 }
 
+// A StatusError struct stores the error response to a status request.
+type StatusError struct {
+    Response string `json:"response"`
+    Code     int    `json:"code"`
+    ServerID string `json:"serverID"`
+    Message  string `json:"message"`
+    Datetime string `json:"datetime"`
+    Token    string `json:"token"`
+}
+
 // A Status stores the SD json message containing system status information
 // usually as part of a StatusResponse.
 type Status struct {
