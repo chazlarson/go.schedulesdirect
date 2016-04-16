@@ -45,23 +45,13 @@ import (
 //-Request the "delta" program id's as determined through the MD5 values.
 
 // Some constants for use in the library
-const (
-	apiVersion     = "20141201"
-	defaultBaseURL = "https://json.schedulesdirect.org/"
-	userAgent      = "TBD"
+var (
+	APIVersion     = "20141201"
+	DefaultBaseURL = "https://json.schedulesdirect.org/"
+	UserAgent      = "TBD"
+    ActiveClient *Client
 )
 
-//Client type
-type Client struct {
-	//Our HTTP client to communicate with SD
-	client *http.Client
-
-	//The Base URL for SD requests
-	BaseURL *url.URL
-
-	//User agent string
-	UserAgent string
-}
 
 // A TokenResponse stores the SD json response message for token request.
 type TokenResponse struct {
@@ -350,27 +340,132 @@ type LastmodifiedRequest struct {
 	Days      int    `json:"days"`
 }
 
-//NewClient returns a new SD API client.  Uses http.DefaultClient if no
-//client is provided.
-//TODO Add userAgent string once determined
-func NewClient(httpClient *http.Client) *Client {
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	baseURL, _ := url.Parse(defaultBaseURL)
-	c := &Client{client: httpClient, BaseURL: baseURL}
-	return c
+// Client type
+type Client struct {
+	//Our HTTP client to communicate with SD
+	//client *http.Client
 
+	//The Base URL for SD requests
+	BaseURL *url.URL
+  
+    // HTTP
+	HTTP *http.Client
+	
+    //The token 
+    Token string
+    
+	//User agent string
+	UserAgent string
+}
+
+// NewClient returns a new SD API client.  Uses http.DefaultClient if no
+// client is provided.
+// TODO Add userAgent string once determined
+func NewClient(username string, password string) *Client {
+	baseURL, _ := url.Parse(DefaultBaseURL)
+	c := &Client{HTTP: &http.Client{}, BaseURL: baseURL}
+    token, _ := c.GetToken(username, password)
+    c.Token = token
+    ActiveClient = c
+	return c
+}
+
+// encryptPassword returns the sha1 hex encoding of the string argument
+func encryptPassword(password string) string {
+	encoded := sha1.New()
+	encoded.Write([]byte(password))
+	return hex.EncodeToString(encoded.Sum(nil))
+}
+
+// GetToken returns a session token if the supplied username/password
+// successfully authenticate.
+func (c Client) GetToken(username string, password string) (string, error) {
+	//The SchedulesDirect token url
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/token")
+
+	//encrypt the password
+	sha1hexPW := encryptPassword(password)
+
+	//TODO: Evaluate performance of this string concatenation, not that this
+	//should run often.
+	var jsonStr = []byte(
+		`{"username":"` + username +
+			`", "password":"` + sha1hexPW + `"}`)
+
+	//setup the request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+
+	//perform the POST
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
+
+	//create a TokenResponse struct, return if err
+	r := new(TokenResponse)
+
+	//decode the response body into the new TokenResponse struct
+	err = json.NewDecoder(resp.Body).Decode(r)
+	if err != nil {
+		return "", err
+	}
+
+	//Print some debugging output
+	//fmt.Println("response Status:", resp.Status)
+	//fmt.Println("response Headers:", resp.Header)
+	//body, _ := ioutil.ReadAll(resp.Body)
+	//fmt.Println("response Body:", string(body))
+
+	//return the token string
+	return r.Token, nil
+}
+
+// GetStatus returns a StatusResponse for this account.
+func (c Client) GetStatus() (*StatusResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/status")
+	fmt.Println("URL:>", url)
+	s := new(StatusResponse)
+
+	req, err := http.NewRequest("GET", url, nil)
+	req.Header.Set("token", c.Token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+		return s, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		log.Fatal(resp.Status)
+		return s, err
+	}
+	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
+
+	//Copy the body to Stdout
+	//_, err = io.Copy(os.Stdout, resp.Body)
+
+	err = json.NewDecoder(resp.Body).Decode(s)
+	if err != nil {
+		fmt.Println("Error parsing status response")
+		log.Fatal(err)
+		return s, err
+	}
+	//fmt.Println("Current Status is: ")
+	//fmt.Println(s.SystemStatus[0].Status)
+	return s, nil
 }
 
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
-func AddLineup(token string, lineupURI string) error {
+func (c Client) AddLineup(lineupURI string) error {
 	//url := "https://json.schedulesdirect.org" + lineupURI
-	url := fmt.Sprint("https://json.schedulesdirect.org/", lineupURI)
+	url := fmt.Sprint(DefaultBaseURL, lineupURI)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("PUT", url, nil)
-	req.Header.Set("token", token)
+	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -391,13 +486,13 @@ func AddLineup(token string, lineupURI string) error {
 }
 
 // DelLineup deletes the given lineup uri from the users SchedulesDirect account.
-func DelLineup(token string, lineupURI string) error {
+func (c Client) DelLineup(lineupURI string) error {
 	//url := "https://json.schedulesdirect.org" + lineupURI
-	url := fmt.Sprint("https://json.schedulesdirect.org/", lineupURI)
+	url := fmt.Sprint(DefaultBaseURL, lineupURI)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("DELETE", url, nil)
-	req.Header.Set("token", token)
+	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -417,13 +512,13 @@ func DelLineup(token string, lineupURI string) error {
 }
 
 // GetHeadends returns the map of headends for the given postal code.
-func GetHeadends(token string, postalCode string) ([]Headend, error) {
-	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion,
+func (c Client) GetHeadends(postalCode string) ([]Headend, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion,
 		"/headends?country=USA&postalcode=", postalCode)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", token)
+	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -454,12 +549,12 @@ func GetHeadends(token string, postalCode string) ([]Headend, error) {
 }
 
 // GetChannels returns the channels in a given lineup
-func GetChannels(token string, lineupURI string) (*ChannelResponse, error) {
-	url := fmt.Sprint("https://json.schedulesdirect.org", lineupURI)
+func (c Client) GetChannels(lineupURI string) (*ChannelResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, lineupURI)
 	fmt.Println("URL:>", url)
 
 	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", token)
+	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -492,8 +587,8 @@ func GetChannels(token string, lineupURI string) (*ChannelResponse, error) {
 }
 
 // GetSchedules returns the set of schedules requested.  As a whole the response is not valid json but each individual line is valid.
-func GetSchedules(token string, stationIds []string, dates []string) ([]Schedule, error) {
-	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/schedules")
+func (c Client) GetSchedules(stationIds []string, dates []string) ([]Schedule, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules")
 	fmt.Println("URL:>", url)
 
 	//buffer to store the json request
@@ -524,7 +619,7 @@ func GetSchedules(token string, stationIds []string, dates []string) ([]Schedule
 	req, err := http.NewRequest("POST", url, &buffer)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Encoding", "deflate,gzip")
-	req.Header.Set("token", token)
+	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -557,8 +652,8 @@ func GetSchedules(token string, stationIds []string, dates []string) ([]Schedule
 }
 
 // GetProgramInfo returns the set of program details for the given set of programs
-func GetProgramInfo(token string, programIDs []string) ([]ProgramInfo, error) {
-	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/programs")
+func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/programs")
 	fmt.Println("URL:>", url)
 
 	//buffer to store the json request
@@ -581,7 +676,7 @@ func GetProgramInfo(token string, programIDs []string) ([]ProgramInfo, error) {
 	req, err := http.NewRequest("POST", url, &buffer)
 	//req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Encoding", "deflate")
-	req.Header.Set("token", token)
+	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -644,21 +739,21 @@ func GetProgramInfo(token string, programIDs []string) ([]ProgramInfo, error) {
 }
 
 // GetLastModified returns 
-func GetLastModified(token string, theRequest []LastmodifiedRequest) {
-	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/schedules/md5")
+func (c Client) GetLastModified(theRequest []LastmodifiedRequest) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules/md5")
 	fmt.Println("URL:>", url)
 
 }
 
 // GetLineups returns a LineupResponse which contains all the lineups subscribed
 // to by this account.
-func GetLineups(token string) (*LineupResponse, error) {
-	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/lineups")
+func (c Client) GetLineups() (*LineupResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/lineups")
 	fmt.Println("URL:>", url)
 	s := new(LineupResponse)
 
 	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", token)
+	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -684,90 +779,3 @@ func GetLineups(token string) (*LineupResponse, error) {
 	return s, nil
 }
 
-// GetStatus returns a StatusResponse for this account.
-func GetStatus(token string) (*StatusResponse, error) {
-	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/status")
-	fmt.Println("URL:>", url)
-	s := new(StatusResponse)
-
-	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", token)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-		return s, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return s, err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
-
-	//Copy the body to Stdout
-	//_, err = io.Copy(os.Stdout, resp.Body)
-
-	err = json.NewDecoder(resp.Body).Decode(s)
-	if err != nil {
-		fmt.Println("Error parsing status response")
-		log.Fatal(err)
-		return s, err
-	}
-	//fmt.Println("Current Status is: ")
-	//fmt.Println(s.SystemStatus[0].Status)
-	return s, nil
-}
-
-// GetToken returns a session token if the supplied username/password
-// successfully authenticate.
-func GetToken(username string, password string) (string, error) {
-	//The SchedulesDirect token url
-	url := fmt.Sprint("https://json.schedulesdirect.org/", apiVersion, "/token")
-
-	//encrypt the password
-	sha1hexPW := encryptPassword(password)
-
-	//TODO: Evaluate performance of this string concatenation, not that this
-	//should run often.
-	var jsonStr = []byte(
-		`{"username":"` + username +
-			`", "password":"` + sha1hexPW + `"}`)
-
-	//setup the request
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("Content-Type", "application/json")
-
-	//perform the POST
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
-
-	//create a TokenResponse struct, return if err
-	r := new(TokenResponse)
-
-	//decode the response body into the new TokenResponse struct
-	err = json.NewDecoder(resp.Body).Decode(r)
-	if err != nil {
-		return "", err
-	}
-
-	//Print some debugging output
-	//fmt.Println("response Status:", resp.Status)
-	//fmt.Println("response Headers:", resp.Header)
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Println("response Body:", string(body))
-
-	//return the token string
-	return r.Token, nil
-}
-
-// encryptPassword returns the sha1 hex enconding of the string argument
-func encryptPassword(password string) string {
-	encoded := sha1.New()
-	encoded.Write([]byte(password))
-	return hex.EncodeToString(encoded.Sum(nil))
-}
