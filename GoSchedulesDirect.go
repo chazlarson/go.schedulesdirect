@@ -55,289 +55,288 @@ var (
 
 // A TokenResponse stores the SD json response message for token request.
 type TokenResponse struct {
-	Code     int    `json:"code"`
-	Message  string `json:"message"`
-	ServerID string `json:"serverID"`
-	Token    string `json:"token"`
+	Code     			int    						`json:"code"`
+	Message  			string 						`json:"message"`
+	ServerID 			string 						`json:"serverID"`
+	Token    			string 						`json:"token"`
 }
 
 // A VersionResponse stores the SD json response message for a version request.
 type VersionResponse struct {
-	Response string    `json:"response"`
-	Code     int       `json:"code"`
-	Client   string    `json:"client"`
-	Version  string    `json:"version,omitempty"`
-	ServerID string    `json:"serverID"`
-	DateTime time.Time `json:"datetime"`
+	Response 			string    					`json:"response"`
+	Code     			int       					`json:"code"`
+	Client   			string    					`json:"client"`
+	Version  			string    					`json:"version,omitempty"`
+	ServerID 			string    					`json:"serverID"`
+	DateTime 			time.Time 					`json:"datetime"`
 }
 
 // An AddLineupResponse stores the SD json message returned after attempting
 // to add a lineup.
 type AddLineupResponse struct {
-	Response         string    `json:"response"`
-	Code             int       `json:"code"`
-	ServerID         string    `json:"serverID"`
-	Message          string    `json:"message"`
-	ChangesRemaining int       `json:"changesRemaining"`
-	DateTime         time.Time `json:"datetime"`
+	Response         	string    					`json:"response"`
+	Code             	int       					`json:"code"`
+	ServerID         	string    					`json:"serverID"`
+	Message          	string    					`json:"message"`
+	ChangesRemaining 	int       					`json:"changesRemaining"`
+	DateTime         	time.Time 					`json:"datetime"`
 }
 
 // A LineupResponse stores the SD json message returned after requesting
 // to list subscribed lineups.
 type LineupResponse struct {
-	ServerID string    `json:"serverID"`
-	DateTime time.Time `json:"datetime"`
-	Lineups  []Lineup  `json:"lineups"`
+	ServerID 			string    					`json:"serverID"`
+	DateTime 			time.Time 					`json:"datetime"`
+	Lineups  			[]Lineup  					`json:"lineups"`
 }
 
 // A StatusResponse stores the SD json message returned after requesting system
 // status.  SystemStatus[0].Status should be "Online" before proceeding.
 type StatusResponse struct {
-	Account        AccountInfo `json:"account"`
-	Lineups        []Lineup    `json:"lineups"`
-	LastDataUpdate string      `json:"lastDataUpdate"`
-	Notifications  []string    `json:"notifications"`
-	SystemStatus   []Status    `json:"systemStatus"`
-	ServerID       string      `json:"serverID"`
-	Code           int         `json:"code"`
+	Account        		AccountInfo 				`json:"account"`
+	Lineups        		[]Lineup    				`json:"lineups"`
+	LastDataUpdate 		string      				`json:"lastDataUpdate"`
+	Notifications  		[]string    				`json:"notifications"`
+	SystemStatus   		[]Status    				`json:"systemStatus"`
+	ServerID       		string      				`json:"serverID"`
+	Code           		int         				`json:"code"`
 }
 
 // A StatusError struct stores the error response to a status request.
 type StatusError struct {
-    Response string `json:"response"`
-    Code     int    `json:"code"`
-    ServerID string `json:"serverID"`
-    Message  string `json:"message"`
-    Datetime string `json:"datetime"`
-    Token    string `json:"token"`
+    Response 			string 						`json:"response"`
+    Code     			int    						`json:"code"`
+    ServerID 			string 						`json:"serverID"`
+    Message  			string 						`json:"message"`
+    Datetime 			string 						`json:"datetime"`
+    Token    			string 						`json:"token"`
 }
 
 // A Status stores the SD json message containing system status information
 // usually as part of a StatusResponse.
 type Status struct {
-	Date    string `json:"date"`
-	Status  string `json:"status"`
-	Details string `json:"details"`
+	Date    			string 						`json:"date"`
+	Status  			string 						`json:"status"`
+	Details 			string 						`json:"details"`
 }
 
 // An AccountInfo stores the SD json message containing account information
 // usually as part of a StatusResponse.
 type AccountInfo struct {
-	Expires                  string   `json:"expires"`
-	Messages                 []string `json:"messages"`
-	MaxLineups               int      `json:"maxLineups"`
-	NextSuggestedConnectTime string   `json:"nextSuggestedConnectTime"`
+	Expires             string   					`json:"expires"`
+	Messages            []string 					`json:"messages"`
+	MaxLineups          int    		  				`json:"maxLineups"`
+	NextSuggestedConnectTime string   				`json:"nextSuggestedConnectTime"`
 }
 
 // A Headend stores the SD json message containing information for a headend.
 type Headend struct {
-	Headend   string   `json:"headend"`
-	Transport string   `json:"transport"`
-	Location  string   `json:"location"`
-	Lineups   []Lineup `json:"lineups"`
+	Headend   			string   					`json:"headend"`
+	Transport 			string   					`json:"transport"`
+	Location  			string   					`json:"location"`
+	Lineups   			[]Lineup 					`json:"lineups"`
 }
 
 // A Lineup stores the SD json message containing lineup information.
 type Lineup struct {
-	Lineup    string `json:"lineup,omitempty"`
-	Name      string `json:"name,omitempty"`
-	ID        string `json:"ID,omitempty"`
-	Modified  string `json:"modified,omitempty"`
-	URI       string `json:"uri"`
-	IsDeleted bool   `json:"isDeleted,omitempty"`
+	Lineup    			string 						`json:"lineup,omitempty"`
+	Name      			string 						`json:"name,omitempty"`
+	ID        			string 						`json:"ID,omitempty"`
+	Modified  			string 						`json:"modified,omitempty"`
+	URI       			string	 					`json:"uri"`
+	IsDeleted 			bool   						`json:"isDeleted,omitempty"`
 }
 
 // A ChannelResponse stores the channel response for a lineup
 type ChannelResponse struct {
-	Map      []ChannelMap        `json:"map"`
-	Stations []Station           `json:"stations"`
-	Metadata ChannelResponseMeta `json:"metadata"`
+	Map      			[]ChannelMap        		`json:"map"`
+	Stations 			[]Station           		`json:"stations"`
+	Metadata 			ChannelResponseMeta 		`json:"metadata"`
 }
 
 // A ChannelResponseMeta stores the metadata field associated with a channel response
 type ChannelResponseMeta struct {
-	Lineup    string    `json:"lineup"`
-	Modified  time.Time `json:"modified"`
-	Transport string    `json:"transport"`
+	Lineup    			string    					`json:"lineup"`
+	Modified  			time.Time 					`json:"modified"`
+	Transport 			string    					`json:"transport"`
 }
 
 // A Station stores the SD json that describes a station.
 type Station struct {
-	Callsign            string          `json:"callsign"`
-    Affiliate           string          `json:"affiliate"`
-	IsCommercialFree    bool            `json:"isCommercialFree"`
-	Name                string          `json:"name"`
-    Broadcaster         BroadcasterInfo `json:"broadcaster"`
-	BroadcastLanguage   []string        `json:"broadcastLanguage"`
-	DescriptionLanguage []string        `json:"descriptionLanguage "`
-	Logo                StationLogo     `json:"logo"`
-	StationID           string          `json:"stationID"`
+	Callsign            string          			`json:"callsign"`
+    Affiliate           string          			`json:"affiliate"`
+	IsCommercialFree    bool            			`json:"isCommercialFree"`
+	Name                string          			`json:"name"`
+    Broadcaster         BroadcasterInfo 			`json:"broadcaster"`
+	BroadcastLanguage   []string        			`json:"broadcastLanguage"`
+	DescriptionLanguage []string        			`json:"descriptionLanguage "`
+	Logo                StationLogo     			`json:"logo"`
+	StationID           string          			`json:"stationID"`
 }
 
 // A BroadcasterInfo stores the information about a broadcaster.
 type BroadcasterInfo struct {
-    City                string      `json:"city"`
-    State               string      `json:"state"`
-    Postalcode          string      `json:"postalcode"`
-    Country             string      `json:"country"`
+    City                string      				`json:"city"`
+    State               string      				`json:"state"`
+    Postalcode          string      				`json:"postalcode"`
+    Country             string      				`json:"country"`
 }
 
 // A StationLogo stores the information to locate a station logo
 type StationLogo struct {
-	URL    string `json:"URL"`
-	Height int    `json:"height"`
-	Width  int    `json:"width"`
-	Md5    string `json:"md5"`
+	URL    				string 						`json:"URL"`
+	Height 				int    						`json:"height"`
+	Width  				int    						`json:"width"`
+	Md5    				string 						`json:"md5"`
 }
 
 // A ChannelMap stores the station id to channel mapping
 type ChannelMap struct {
-	StationID string `json:"stationID"`
-	Channel   string `json:"channel,omitempty"`
-	UhfVhf    int    `json:"uhfVhf,omitempty"`
-	AtscMajor int    `json:"atscMajor,omitempty"`
-	AtscMinor int    `json:"atscMinor,omitempty"`
+	StationID 			string 						`json:"stationID"`
+	Channel   			string 						`json:"channel,omitempty"`
+	UhfVhf   	 		int    						`json:"uhfVhf,omitempty"`
+	AtscMajor 			int    						`json:"atscMajor,omitempty"`
+	AtscMinor 			int    						`json:"atscMinor,omitempty"`
 }
 
 // A Schedule stores the program information for a given stationID
 type Schedule struct {
-	StationID string       `json:"stationID"`
-	MetaData  ScheduleMeta `json:"metadata"`
-	Programs  []Program    `json:"programs"`
+	StationID 			string       				`json:"stationID"`
+	MetaData  			ScheduleMeta 				`json:"metadata"`
+	Programs  			[]Program    				`json:"programs"`
 }
 
 // A ScheduleMeta stores the metadata information for a schedule
 type ScheduleMeta struct {
-	Modified  string `json:"modified"`
-	MD5       string `json:"md5"`
-	StartDate string `json:"startDate"`
-	EndDate   string `json:"endDate"`
-	Days      int    `json:"days"`
+	Modified  			string 						`json:"modified"`
+	MD5       			string 						`json:"md5"`
+	StartDate 			string 						`json:"startDate"`
+	EndDate   			string 						`json:"endDate"`
+	Days      			int    						`json:"days"`
 }
 
 // A Program stores the information to describing a single television program.
 type Program struct {
-	ProgramID           string          `json:"programID,omitempty"`
-	AirDateTime         time.Time       `json:"airDateTime,omitempty"`
-	Md5                 string          `json:"md5,omitempty"`
-	Duration            int             `json:"duration,omitempty"`
-	New                 bool            `json:"new,omitempty"`
-	CableInTheClassroom bool            `json:"cableInTheClassRoom,omitempty"`
-	Catchup             bool            `json:"catchup,omitempty"`   // - typically only found outside of North America
-	Continued           bool            `json:"continued,omitempty"` // - typically only found outside of North America
-	Education           bool            `json:"educational,omitempty"`
-	JoinedInProgress    bool            `json:"joinedInProgress,omitempty"`
-	LeftInProgress      bool            `json:"leftInProgress,omitempty"`
-	Premiere            bool            `json:"premiere,omitempty"`          //- Should only be found in Miniseries and Movie program types.
-	ProgramBreak        bool            `json:"programBreak,omitempty"`      // - Program stops and will restart later (frequently followed by a continued). Typically only found outside of North America.
-	Repeat              bool            `json:"repeat,omitempty"`            // - An encore presentation. Repeat should only be found on a second telecast of sporting events.
-	Signed              bool            `json:"signed,omitempty"`            //- Program has an on-screen person providing sign-language translation.
-	SubjectToBlackout   bool            `json:"subjectToBlackout,omitempty"` //subjectToBlackout
-	TimeApproximate     bool            `json:"timeApproximate,omitempty"`
-	AudioProperties     []string        `json:"audioProperties,omitempty"`
-	Syndication         SyndicationType `json:"syndication,omitempty"`
-	Ratings             []ProgramRating `json:"ratings, omitempty"`
-	ProgramPart         Part            `json:"multipart, omitempty"`
-	VideoProperties     []string        `json:"videoProperties,omitempty"`
+	ProgramID           string          			`json:"programID,omitempty"`
+	AirDateTime         time.Time       			`json:"airDateTime,omitempty"`
+	Md5                 string          			`json:"md5,omitempty"`
+	Duration            int             			`json:"duration,omitempty"`
+	New                 bool            			`json:"new,omitempty"`
+	CableInTheClassroom bool            			`json:"cableInTheClassRoom,omitempty"`
+	Catchup             bool            			`json:"catchup,omitempty"`   // - typically only found outside of North America
+	Continued           bool            			`json:"continued,omitempty"` // - typically only found outside of North America
+	Education           bool            			`json:"educational,omitempty"`
+	JoinedInProgress    bool            			`json:"joinedInProgress,omitempty"`
+	LeftInProgress      bool            			`json:"leftInProgress,omitempty"`
+	Premiere            bool            			`json:"premiere,omitempty"`          //- Should only be found in Miniseries and Movie program types.
+	ProgramBreak        bool            			`json:"programBreak,omitempty"`      // - Program stops and will restart later (frequently followed by a continued). Typically only found outside of North America.
+	Repeat              bool            			`json:"repeat,omitempty"`            // - An encore presentation. Repeat should only be found on a second telecast of sporting events.
+	Signed              bool            			`json:"signed,omitempty"`            //- Program has an on-screen person providing sign-language translation.
+	SubjectToBlackout   bool            			`json:"subjectToBlackout,omitempty"` //subjectToBlackout
+	TimeApproximate     bool            			`json:"timeApproximate,omitempty"`
+	AudioProperties     []string        			`json:"audioProperties,omitempty"`
+	Syndication         SyndicationType 			`json:"syndication,omitempty"`
+	Ratings             []ProgramRating 			`json:"ratings, omitempty"`
+	ProgramPart         Part            			`json:"multipart, omitempty"`
+	VideoProperties     []string        			`json:"videoProperties,omitempty"`
 }
 
 // A SyndicationType stores syndication information for a program
 type SyndicationType struct {
-	Source string `json:"source"`
-	Type   string `json:"type"`
+	Source 				string 						`json:"source"`
+	Type   				string 						`json:"type"`
 }
 
 // A ProgramRating stores ratings board information for a program
 type ProgramRating struct {
-	Body string `json:"body"`
-	Code string `json:"code"`
+	Body 				string 						`json:"body"`
+	Code 				string 						`json:"code"`
 }
 
 // A ProgramMetaItem stores meta information for a program
 type ProgramMetaItem struct {
-	Season  int `json:"season"`
-	Episode int `json:"episode,omitmepty"`
+	Season  			int 						`json:"season"`
+	Episode 			int 						`json:"episode,omitmepty"`
 }
 
 // A ProgramInfo type stores program information for a program
 type ProgramInfo struct {
-	ProgramID string `json:"programID"`
-	Titles    []struct {
-		Title120 string `json:"title120"`
+	ProgramID 			string 						`json:"programID"`
+	Titles    			[]struct {
+		Title120 			string 			`json:"title120"`
 	} `json:"titles"`
-
-	EventDetails    Details                    `json:"eventDetails"`
-	Descriptions    ProgramDescriptions        `json:"descriptions"`
-	OriginalAirDate string                     `json:"originalAirDate"`
-	EpisodeTitle150 string                     `json:"episodeTitle150"`
-	Metadata        map[string]ProgramMetaItem `json:"metadata"`
-	Movie           Movie                      `json:"movie,omitempty"`
-	Cast            []Person                   `json:"cast"`
-	Crew            []Person                   `json:"crew"`
-	ShowType        string                     `json:"showType"`
-	HasImageArtWork bool                       `json:"hasImageArtwork"`
-	Md5             string                     `json:"md5"`
+	EventDetails    	Details						`json:"eventDetails"`
+	Descriptions    	ProgramDescriptions			`json:"descriptions"`
+	OriginalAirDate 	string						`json:"originalAirDate"`
+	EpisodeTitle150 	string						`json:"episodeTitle150"`
+	Metadata        	map[string]ProgramMetaItem	`json:"metadata"`
+	Movie           	Movie						`json:"movie,omitempty"`
+	Cast            	[]Person					`json:"cast"`
+	Crew            	[]Person					`json:"crew"`
+	ShowType        	string						`json:"showType"`
+	HasImageArtWork 	bool						`json:"hasImageArtwork"`
+	Md5             	string						`json:"md5"`
 }
 
 // A Movie type stores information about a movie
 type Movie struct {
-	Duration      int    `json:"duration"`
-	Year          string `json:"year"`
-	QualityRating []struct {
-		Increment   string `json:"increment"`
-		MaxRating   string `json:"maxRating"`
-		MinRating   string `json:"minRating"`
-		Rating      string `json:"rating"`
-		RatingsBody string `json:"ratingsBody"`
+	Duration			int    						`json:"duration"`
+	Year				string 						`json:"year"`
+	QualityRating		[]struct {
+		Increment   		string			`json:"increment"`
+		MaxRating   		string			`json:"maxRating"`
+		MinRating   		string			`json:"minRating"`
+		Rating      		string			`json:"rating"`
+		RatingsBody 		string			`json:"ratingsBody"`
 	} `json:"qualityRating"`
 }
 
 // Person stores information for an acting credit.
 type Person struct {
-	PersonID      string `json:"personId,omitmepty"`
-	NameID        string `json:"nameId,omitempty"`
-	Name          string `json:"name"`
-	Role          string `json:"role"`
-	CharacterName string `json:"characterName,omitempty"`
-	BillingOrder  string `json:"billingOrder"`
+	PersonID      		string 						`json:"personId,omitmepty"`
+	NameID        		string 						`json:"nameId,omitempty"`
+	Name          		string 						`json:"name"`
+	Role          		string 						`json:"role"`
+	CharacterName 		string 						`json:"characterName,omitempty"`
+	BillingOrder  		string 						`json:"billingOrder"`
 }
 
 // ProgramInfoError stores the error response for a program request
 type ProgramInfoError struct {
-	Response string    `json:"reponse"`
-	Code     int       `json:"code"`
-	ServerID string    `json:"serverID"`
-	Message  string    `json:"message"`
-	DateTime time.Time `json:"datetime"`
+	Response 			string    					`json:"reponse"`
+	Code     			int       					`json:"code"`
+	ServerID 			string    					`json:"serverID"`
+	Message  			string    					`json:"message"`
+	DateTime 			time.Time 					`json:"datetime"`
 }
 
 // Details stores some details hehehe
 type Details struct {
-	Subtype string
+	Subtype 			string						`json:"subtype"`
 }
 
 // ProgramDescriptions stores the descriptive summaries for a program
 type ProgramDescriptions struct {
-	Description100  []Description `json:"description100,omitempty"`
-	Description1000 []Description `json:"description1000.omitempty"`
+	Description100  	[]Description 				`json:"description100,omitempty"`
+	Description1000 	[]Description 				`json:"description1000.omitempty"`
 }
 
 // Description helps store the descriptions for programs
 type Description struct {
-	DescriptionLanguage string `json:"descriptionLanguage"`
-	Description         string `json:"description"`
+	DescriptionLanguage string 						`json:"descriptionLanguage"`
+	Description         string 						`json:"description"`
 }
 
 // Part stores the information for a part
 type Part struct {
-	PartNumber int `json:"partNumber"`
-	TotalParts int `json:"totalParts"`
+	PartNumber 			int 						`json:"partNumber"`
+	TotalParts 			int 						`json:"totalParts"`
 }
 
 // LastmodifiedRequest stores the information needed to make a last modified request.
 type LastmodifiedRequest struct {
-	StationID string `json:"stationID"`
-	Days      int    `json:"days"`
+	StationID 			string 						`json:"stationID"`
+	Days      			int    						`json:"days"`
 }
 
 // Client type
