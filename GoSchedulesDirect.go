@@ -147,6 +147,14 @@ type Lineup struct {
 	IsDeleted 			bool   						`json:"isDeleted,omitempty"`
 }
 
+// A BroadcasterInfo stores the information about a broadcaster.
+type BroadcasterInfo struct {
+    City                string      				`json:"city"`
+    State               string      				`json:"state"`
+    Postalcode          string      				`json:"postalcode"`
+    Country             string      				`json:"country"`
+}
+
 // A ChannelResponse stores the channel response for a lineup
 type ChannelResponse struct {
 	Map      			[]ChannelMap        		`json:"map"`
@@ -172,14 +180,6 @@ type Station struct {
 	DescriptionLanguage []string        			`json:"descriptionLanguage "`
 	Logo                StationLogo     			`json:"logo"`
 	StationID           string          			`json:"stationID"`
-}
-
-// A BroadcasterInfo stores the information about a broadcaster.
-type BroadcasterInfo struct {
-    City                string      				`json:"city"`
-    State               string      				`json:"state"`
-    Postalcode          string      				`json:"postalcode"`
-    Country             string      				`json:"country"`
 }
 
 // A StationLogo stores the information to locate a station logo
@@ -215,6 +215,12 @@ type ScheduleMeta struct {
 	Days      			int    						`json:"days"`
 }
 
+// A SyndicationType stores syndication information for a program
+type SyndicationType struct {
+	Source 				string 						`json:"source"`
+	Type   				string 						`json:"type"`
+}
+
 // A Program stores the information to describing a single television program.
 type Program struct {
 	ProgramID           string          			`json:"programID,omitempty"`
@@ -236,15 +242,9 @@ type Program struct {
 	TimeApproximate     bool            			`json:"timeApproximate,omitempty"`
 	AudioProperties     []string        			`json:"audioProperties,omitempty"`
 	Syndication         SyndicationType 			`json:"syndication,omitempty"`
-	Ratings             []ProgramRating 			`json:"ratings, omitempty"`
-	ProgramPart         Part            			`json:"multipart, omitempty"`
+	Ratings             []ProgramRating 			`json:"ratings,omitempty"`
+	ProgramPart         Part            			`json:"multipart,omitempty"`
 	VideoProperties     []string        			`json:"videoProperties,omitempty"`
-}
-
-// A SyndicationType stores syndication information for a program
-type SyndicationType struct {
-	Source 				string 						`json:"source"`
-	Type   				string 						`json:"type"`
 }
 
 // A ProgramRating stores ratings board information for a program
@@ -253,52 +253,74 @@ type ProgramRating struct {
 	Code 				string 						`json:"code"`
 }
 
-// A ProgramMetaItem stores meta information for a program
-type ProgramMetaItem struct {
-	Season  			int 						`json:"season"`
-	Episode 			int 						`json:"episode,omitmepty"`
-}
-
 // A ProgramInfo type stores program information for a program
 type ProgramInfo struct {
-	ProgramID 			string 						`json:"programID"`
+	ProgramID 			string 						`json:"programID,omitempty"`
 	Titles    			[]struct {
-		Title120 			string 			`json:"title120"`
-	} `json:"titles"`
-	EventDetails    	Details						`json:"eventDetails"`
-	Descriptions    	ProgramDescriptions			`json:"descriptions"`
+		Title120 			string 			`json:"title120,omitempty"`
+	} `json:"titles,omitempty"`
+	EventDetails    	*struct {
+        SubType             *string `json:"subType,omitempty"`
+	} `json:"eventDetails,omitempty"`
+	Descriptions struct {
+		Description1000 []struct {
+			Description         string `json:"description"`
+			DescriptionLanguage string `json:"descriptionLanguage"`
+		} `json:"description1000"`
+	} `json:"descriptions"`
 	OriginalAirDate 	string						`json:"originalAirDate"`
-	EpisodeTitle150 	string						`json:"episodeTitle150"`
-	Metadata        	map[string]ProgramMetaItem	`json:"metadata"`
-	Movie           	Movie						`json:"movie,omitempty"`
-	Cast            	[]Person					`json:"cast"`
-	Crew            	[]Person					`json:"crew"`
+	Genres              []string                    `json:"genres,omitempty"`
+	EpisodeTitle150 	string						`json:"episodeTitle150,omitempty"`
+	Metadata        []*struct {
+		Gracenote *struct {
+			Episode       *int `json:"episode,omitzero"`
+			Season        *int `json:"season,omitzero"`
+			TotalEpisodes *int `json:"totalEpisodes,omitempty"`
+		} `json:"Gracenote,omitempty"`
+	} `json:"metadata"`
+	Movie           	*Movie						`json:"movie,omitempty"`
+	Cast            	[]*Person					`json:"cast,omitempty"`
+	Crew            	[]*Person					`json:"crew,omitempty"`
+	ContentRating         []struct {
+		Body                string                       `json:"body"`
+		Code                string                       `json:"code"`
+	} `json:"contentRating,omitempty"`
+	EntityType          string                      `json:"entityType,omitempty"`
 	ShowType        	string						`json:"showType"`
 	HasImageArtWork 	bool						`json:"hasImageArtwork"`
 	Md5             	string						`json:"md5"`
 }
 
+// A ProgramMetaItem stores meta information for a program
+type ProgramMetaItem struct {
+	string map[string] struct {
+	TotalEpisodes       int                         `json:"totalEpisodes,ommitempty"`
+	Season  			int 						`json:"season,omitempty"`
+	Episode 			int 						`json:"episode,omitmepty"`
+	}
+}
+
 // A Movie type stores information about a movie
 type Movie struct {
-	Duration			int    						`json:"duration"`
-	Year				string 						`json:"year"`
-	QualityRating		[]struct {
-		Increment   		string			`json:"increment"`
-		MaxRating   		string			`json:"maxRating"`
-		MinRating   		string			`json:"minRating"`
-		Rating      		string			`json:"rating"`
-		RatingsBody 		string			`json:"ratingsBody"`
-	} `json:"qualityRating"`
+	Duration			*int    						`json:"duration,omitempty"`
+	Year				*string 						`json:"year,omitempty"`
+	QualityRating		[]*struct {
+		Increment   		*string			`json:"increment,omitempty"`
+		MaxRating   		*string			`json:"maxRating,omitempty"`
+		MinRating   		*string			`json:"minRating,omitempty"`
+		Rating      		*string			`json:"rating,omitempty"`
+		RatingsBody 		*string			`json:"ratingsBody,omitmepty"`
+	} `json:"qualityRating,omitempty"`
 }
 
 // Person stores information for an acting credit.
 type Person struct {
-	PersonID      		string 						`json:"personId,omitmepty"`
-	NameID        		string 						`json:"nameId,omitempty"`
-	Name          		string 						`json:"name"`
-	Role          		string 						`json:"role"`
-	CharacterName 		string 						`json:"characterName,omitempty"`
-	BillingOrder  		string 						`json:"billingOrder"`
+	PersonID      		*string 						`json:"personId,omitmepty"`
+	NameID        		*string 						`json:"nameId,omitempty"`
+	Name          		*string 						`json:"name,omitempty"`
+	Role          		*string 						`json:"role,omitempty"`
+	CharacterName 		*string 						`json:"characterName,omitempty"`
+	BillingOrder  		*string 						`json:"billingOrder,omitempty"`
 }
 
 // ProgramInfoError stores the error response for a program request
@@ -310,15 +332,10 @@ type ProgramInfoError struct {
 	DateTime 			time.Time 					`json:"datetime"`
 }
 
-// Details stores some details hehehe
-type Details struct {
-	Subtype 			string						`json:"subtype"`
-}
-
 // ProgramDescriptions stores the descriptive summaries for a program
 type ProgramDescriptions struct {
 	Description100  	[]Description 				`json:"description100,omitempty"`
-	Description1000 	[]Description 				`json:"description1000.omitempty"`
+	Description1000 	[]Description 				`json:"description1000,omitempty"`
 }
 
 // Description helps store the descriptions for programs
@@ -341,19 +358,19 @@ type LastmodifiedRequest struct {
 
 // Client type
 type Client struct {
-	//Our HTTP client to communicate with SD
+	// Our HTTP client to communicate with SD
 	//client *http.Client
 
-	//The Base URL for SD requests
+	// The Base URL for SD requests
 	BaseURL *url.URL
   
     // HTTP
 	HTTP *http.Client
 	
-    //The token 
+    // The token 
     Token string
     
-	//User agent string
+	// User agent string
 	UserAgent string
 }
 
@@ -379,23 +396,23 @@ func encryptPassword(password string) string {
 // GetToken returns a session token if the supplied username/password
 // successfully authenticate.
 func (c Client) GetToken(username string, password string) (string, error) {
-	//The SchedulesDirect token url
+	// The SchedulesDirect token url
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/token")
 
-	//encrypt the password
+	// encrypt the password
 	sha1hexPW := encryptPassword(password)
 
-	//TODO: Evaluate performance of this string concatenation, not that this
-	//should run often.
+	// TODO: Evaluate performance of this string concatenation, not that this
+	// should run often.
 	var jsonStr = []byte(
 		`{"username":"` + username +
 			`", "password":"` + sha1hexPW + `"}`)
 
-	//setup the request
+	// setup the request
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("Content-Type", "application/json")
 
-	//perform the POST
+	// perform the POST
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -403,22 +420,22 @@ func (c Client) GetToken(username string, password string) (string, error) {
 	}
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	//create a TokenResponse struct, return if err
+	// create a TokenResponse struct, return if err
 	r := new(TokenResponse)
 
-	//decode the response body into the new TokenResponse struct
+	// decode the response body into the new TokenResponse struct
 	err = json.NewDecoder(resp.Body).Decode(r)
 	if err != nil {
 		return "", err
 	}
 
-	//Print some debugging output
+	// Print some debugging output
 	//fmt.Println("response Status:", resp.Status)
 	//fmt.Println("response Headers:", resp.Header)
 	//body, _ := ioutil.ReadAll(resp.Body)
 	//fmt.Println("response Body:", string(body))
 
-	//return the token string
+	// return the token string
 	return r.Token, nil
 }
 
@@ -443,7 +460,7 @@ func (c Client) GetStatus() (*StatusResponse, error) {
 	}
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	//Copy the body to Stdout
+	// Copy the body to Stdout
 	//_, err = io.Copy(os.Stdout, resp.Body)
 
 	err = json.NewDecoder(resp.Body).Decode(s)
@@ -531,13 +548,13 @@ func (c Client) GetHeadends(postalCode string) ([]Headend, error) {
 	}
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	//make the slice of headends
+	// make the slice of headends
 	h := []Headend{}
     
 	//body, _ := ioutil.ReadAll(resp.Body)
 	//fmt.Println("PostalResponse Body:", string(body))
 
-	//decode the body
+	// decode the body
 	err = json.NewDecoder(resp.Body).Decode(&h)
 	if err != nil {
 		fmt.Println("Error parsing headend responseline")
@@ -567,14 +584,14 @@ func (c Client) GetChannels(lineupURI string) (*ChannelResponse, error) {
 	}
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	//make the map
+	// make the map
 	h := new(ChannelResponse)
 
-    //debug code	
+    // debug code	
     //body, _ := ioutil.ReadAll(resp.Body)
 	//fmt.Println(string(body))
 
-	//decode the body into the map
+	// decode the body into the map
 	err = json.NewDecoder(resp.Body).Decode(&h)
 	if err != nil {
 		fmt.Println("Error parsing channel response line")
@@ -632,14 +649,14 @@ func (c Client) GetSchedules(stationIds []string, dates []string) ([]Schedule, e
 	}
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
     
-    //decode the response
+    // decode the response
 	var h []Schedule
              
-   //debug code	
+   // debug code	
     //body, _ := ioutil.ReadAll(resp.Body)
 	//fmt.Println(string(body))
     
-	//decode the body
+	// decode the body
 	err = json.NewDecoder(resp.Body).Decode(&h)
 	if err != nil {
 		fmt.Println("Error parsing schedules response")
@@ -655,26 +672,28 @@ func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/programs")
 	fmt.Println("URL:>", url)
 
-	//buffer to store the json request
+	// buffer to store the json request
 	var buffer bytes.Buffer
 
-	//creating the request
+	// creating the request
 	buffer.WriteString("[")
 	for index, program := range programIDs {
-		//fmt.Println(station)
+		//fmt.Println(program) //debug
+		if(program != "") {
 		buffer.WriteString(`"`)
 		buffer.WriteString(program)
 		buffer.WriteString(`"`)
 		if index != len(programIDs)-1 {
 			buffer.WriteString(",")
 		}
+		}
 	}
 	buffer.WriteString("]")
 
-	//setup the request
+	// setup the request
 	req, err := http.NewRequest("POST", url, &buffer)
 	//req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Encoding", "deflate")
+	req.Header.Set("Accept-Encoding", "deflate,gzip")
 	req.Header.Set("token", c.Token)
 
 	client := &http.Client{}
@@ -689,26 +708,38 @@ func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	}
 	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	//Copy the body to Stdout
+	// Copy the body to Stdout
 	//_, err = io.Copy(os.Stdout, resp.Body)
+   // debug code	
+    //body, _ := ioutil.ReadAll(resp.Body)
+	 //fmt.Println(string(body))
 
-	//create the schedules slice
+	// create the programs slice
 	var allPrograms []ProgramInfo
+
+    
+	// // decode the body
+	// err = json.NewDecoder(resp.Body).Decode(&allPrograms)
+	// if err != nil {
+	// 	fmt.Println("Error parsing programs response")
+	// 	log.Fatal(err)
+	// 	return nil, err
+	// }
 
 	//readbuffer := bytes.NewBuffer(resp.Body)
 	reader := bufio.NewReader(resp.Body)
 
-	//we need to increase the default reader size to get this in one shot
+	// we need to increase the default reader size to get this in one shot
 	bufio.NewReaderSize(reader, 65536)
 	// there are a few possible loop termination
 	// conditions, so just start with an infinite loop.
 	for {
-		//ReadString because Schedules Direct puts each schedule on it's own line
-		//each line is a complete json object but not the whole response.
+		// ReadString because Schedules Direct puts each schedule on it's own line
+		// each line is a complete json object but not the whole response.
 		line, err := reader.ReadString('\n')
 
 		//debug
-		fmt.Println(line)
+		//fmt.Println(line)
 
 		// loop termination condition 1:  EOF.
 		// this is the normal loop termination condition.
@@ -722,15 +753,15 @@ func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 			log.Fatal(err)
 		}
 
-		//create a Schedule variable
-		var s ProgramInfo
+		// create a Schedule variable
+		//var s ProgramInfo
 
-		//decode the scanner bytes into the schedule
-		errUnmarshal := json.Unmarshal([]byte(line), &s)
+		// decode the scanner bytes into the schedule
+		errUnmarshal := json.Unmarshal([]byte(line), &allPrograms)
 		if errUnmarshal != nil {
 			log.Printf("error unmarshaling program: %s\n", errUnmarshal)
 		} else {
-			allPrograms = append(allPrograms, s)
+			//allPrograms = append(allPrograms, s)
 		}
 	}
 
