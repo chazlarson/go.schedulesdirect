@@ -62,19 +62,23 @@ type BaseResponse struct {
 
 // Error returns a error string.
 func (e *BaseResponse) Error() string {
-	return e.Message
+	msg := e.Message
+	if msg == "" {
+		msg = e.Response
+	}
+	return fmt.Sprintf("received error code %d, message %s from Schedules-Direct", e.Code, msg)
 }
 
 // A TokenResponse stores the SD json response message for token request.
 type TokenResponse struct {
-	BaseResponse
+	BaseResponse BaseResponse
 
 	Token string `json:"token"`
 }
 
 // A VersionResponse stores the SD json response message for a version request.
 type VersionResponse struct {
-	BaseResponse
+	BaseResponse BaseResponse
 
 	Version string `json:"version,omitempty"`
 }
@@ -82,7 +86,7 @@ type VersionResponse struct {
 // A ChangeLineupResponse stores the SD json message returned after attempting
 // to add or delete a lineup.
 type ChangeLineupResponse struct {
-	BaseResponse
+	BaseResponse BaseResponse
 
 	ChangesRemaining int `json:"changesRemaining"`
 }
@@ -90,7 +94,7 @@ type ChangeLineupResponse struct {
 // A LineupResponse stores the SD json message returned after requesting
 // to list subscribed lineups.
 type LineupResponse struct {
-	BaseResponse
+	BaseResponse BaseResponse
 
 	Lineups []Lineup `json:"lineups"`
 }
@@ -98,8 +102,6 @@ type LineupResponse struct {
 // A StatusResponse stores the SD json message returned after requesting system
 // status.  SystemStatus[0].Status should be "Online" before proceeding.
 type StatusResponse struct {
-	BaseResponse
-
 	Account        AccountInfo `json:"account"`
 	Lineups        []Lineup    `json:"lineups"`
 	LastDataUpdate string      `json:"lastDataUpdate"`
@@ -109,7 +111,7 @@ type StatusResponse struct {
 
 // A StatusError struct stores the error response to a status request.
 type StatusError struct {
-	BaseResponse
+	BaseResponse BaseResponse
 
 	Token string `json:"token"`
 }
@@ -368,7 +370,7 @@ type ProgramDescription struct {
 
 // LanguageCrossReference provides translated titles and descriptions for a program.
 type LanguageCrossReference struct {
-	BaseResponse
+	BaseResponse BaseResponse
 
 	DescriptionLanguage     string `json:"descriptionLanguage"`
 	DescriptionLanguageName string `json:"descriptionLanguageName"`
@@ -380,7 +382,7 @@ type LanguageCrossReference struct {
 
 // A StillRunningResponse describes the current real time state of a program.
 type StillRunningResponse struct {
-	BaseResponse
+	BaseResponse BaseResponse
 
 	EventStartDateTime string `json:"eventStartDateTime"`
 	IsComplete         bool   `json:"isComplete"`
@@ -455,7 +457,7 @@ func encryptPassword(password string) (string, error) {
 
 // GetToken returns a session token if the supplied username/password
 // successfully authenticate.
-func (c Client) GetToken(username string, password string) (string, error) {
+func (c *Client) GetToken(username string, password string) (string, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/token")
 
 	// encrypt the password
@@ -495,9 +497,8 @@ func (c Client) GetToken(username string, password string) (string, error) {
 }
 
 // GetStatus returns a StatusResponse for this account.
-func (c Client) GetStatus() (*StatusResponse, error) {
+func (c *Client) GetStatus() (*StatusResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/status")
-	s := new(StatusResponse)
 
 	req, httpErr := http.NewRequest("GET", url, nil)
 	if httpErr != nil {
@@ -509,12 +510,16 @@ func (c Client) GetStatus() (*StatusResponse, error) {
 		return nil, err
 	}
 
-	err = json.Unmarshal(data, &s)
+	s := &StatusResponse{}
+
+	if jsonErr := json.Unmarshal(data, &s); jsonErr != nil {
+		return nil, jsonErr
+	}
 	return s, err
 }
 
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
-func (c Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
+func (c *Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
 
 	req, httpErr := http.NewRequest("PUT", url, nil)
@@ -534,7 +539,7 @@ func (c Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
 }
 
 // DeleteLineup deletes the given lineup uri from the users SchedulesDirect account.
-func (c Client) DeleteLineup(lineupURI string) (*ChangeLineupResponse, error) {
+func (c *Client) DeleteLineup(lineupURI string) (*ChangeLineupResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
 
 	req, httpErr := http.NewRequest("DELETE", url, nil)
@@ -555,7 +560,7 @@ func (c Client) DeleteLineup(lineupURI string) (*ChangeLineupResponse, error) {
 
 // AutomapLineup accepts the "lineup.json" output as a byte slice from SiliconDust's HDHomerun devices.
 // It then runs a comparison against ScheduleDirect's database and returns potential lineup matches.
-func (c Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
+func (c *Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/map/lineup")
 
 	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(hdhrLineupJSON))
@@ -576,7 +581,7 @@ func (c Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
 
 // SubmitLineup should be called if AutomapLineup doesn't return candidates after you identify
 // the lineup you were trying to find via automapping.
-func (c Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseResponse, error) {
+func (c *Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/map/lineup/", lineupID)
 
 	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(hdhrLineupJSON))
@@ -597,7 +602,7 @@ func (c Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseRespo
 }
 
 // GetHeadends returns the map of headends for the given country and postal code.
-func (c Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) {
+func (c *Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) {
 	uriPart := fmt.Sprintf("/headends?country=%s&postalcode=%s", countryCode, postalCode)
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, uriPart)
 
@@ -621,7 +626,7 @@ func (c Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) {
 }
 
 // GetChannels returns the channels in a given lineup
-func (c Client) GetChannels(lineupURI string) (*ChannelResponse, error) {
+func (c *Client) GetChannels(lineupURI string) (*ChannelResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
 
 	req, httpErr := http.NewRequest("GET", url, nil)
@@ -641,7 +646,7 @@ func (c Client) GetChannels(lineupURI string) (*ChannelResponse, error) {
 }
 
 // GetSchedules returns the set of schedules requested.  As a whole the response is not valid json but each individual line is valid.
-func (c Client) GetSchedules(requests []StationScheduleRequest) ([]Schedule, error) {
+func (c *Client) GetSchedules(requests []StationScheduleRequest) ([]Schedule, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules")
 
 	js, jsErr := json.Marshal(requests)
@@ -667,7 +672,7 @@ func (c Client) GetSchedules(requests []StationScheduleRequest) ([]Schedule, err
 }
 
 // GetProgramInfo returns the set of program details for the given set of programs
-func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
+func (c *Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	if len(programIDs) > 5000 {
 		return nil, errors.New("you may only request at most 5000 program IDs per request, please lower your request amount")
 	}
@@ -685,39 +690,23 @@ func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	}
 	req.Header.Set("Accept-Encoding", "deflate,gzip")
 
-	resp, _, err := c.sendRequest(req)
+	_, data, err := c.sendRequest(req)
 	if err != nil {
 		return nil, err
-	}
-
-	// Your client must send an Accept-Encoding that has "deflate,gzip" in it, even though the response will be gzip'ed.
-	// This is due to an implementation bug in 20140530 which will be fixed in 20141201.
-	//
-	// Not actually fixed yet and Go disables automatic decompression if Accept-Encoding is set, so we are stuck doing the decompression ourselves.
-	var reader = resp.Body
-	if resp.Header.Get("Content-Encoding") == "gzip" {
-		readerG, errG := gzip.NewReader(reader)
-		if errG == nil {
-			reader = readerG
-		} else {
-			return nil, errG
-		}
 	}
 
 	// create the programs slice
 	var allPrograms []ProgramInfo
 
-	if err = json.NewDecoder(reader).Decode(&allPrograms); err != nil {
+	if err = json.Unmarshal(data, &allPrograms); err != nil {
 		return nil, err
 	}
-
-	err = reader.Close()
 
 	return allPrograms, err
 }
 
 // GetProgramDescription returns a set of program descriptions for the given set of program IDs.
-func (c Client) GetProgramDescription(programIDs []string) (map[string]ProgramDescription, error) {
+func (c *Client) GetProgramDescription(programIDs []string) (map[string]ProgramDescription, error) {
 	if len(programIDs) > 500 {
 		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
 	}
@@ -749,7 +738,7 @@ func (c Client) GetProgramDescription(programIDs []string) (map[string]ProgramDe
 }
 
 // GetLanguageCrossReference returns a map of translated titles and descriptions for the given programIDs.
-func (c Client) GetLanguageCrossReference(programIDs []string) (map[string][]LanguageCrossReference, error) {
+func (c *Client) GetLanguageCrossReference(programIDs []string) (map[string][]LanguageCrossReference, error) {
 	// A 500 item limit is not defined in the docs but seems like the reasonable default.
 	if len(programIDs) > 500 {
 		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
@@ -782,7 +771,7 @@ func (c Client) GetLanguageCrossReference(programIDs []string) (map[string][]Lan
 }
 
 // GetLastModified returns the last modified information for the given station IDs and optional dates.
-func (c Client) GetLastModified(requests []StationScheduleRequest) (map[string]map[string]LastModifiedEntry, error) {
+func (c *Client) GetLastModified(requests []StationScheduleRequest) (map[string]map[string]LastModifiedEntry, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules/md5")
 
 	s := make(map[string]map[string]LastModifiedEntry)
@@ -809,7 +798,7 @@ func (c Client) GetLastModified(requests []StationScheduleRequest) (map[string]m
 
 // GetLineups returns a LineupResponse which contains all the lineups subscribed
 // to by this account.
-func (c Client) GetLineups() (*LineupResponse, error) {
+func (c *Client) GetLineups() (*LineupResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/lineups")
 	s := new(LineupResponse)
 
@@ -829,7 +818,7 @@ func (c Client) GetLineups() (*LineupResponse, error) {
 }
 
 // DeleteSystemMessage deletes a system message from the status response.
-func (c Client) DeleteSystemMessage(messageID string) error {
+func (c *Client) DeleteSystemMessage(messageID string) error {
 	url := fmt.Sprint(DefaultBaseURL, "/messages/", messageID)
 
 	req, httpErr := http.NewRequest("DELETE", url, nil)
@@ -843,7 +832,7 @@ func (c Client) DeleteSystemMessage(messageID string) error {
 }
 
 // GetProgramStillRunning returns the real time status of the given program ID.
-func (c Client) GetProgramStillRunning(programID string) (*StillRunningResponse, error) {
+func (c *Client) GetProgramStillRunning(programID string) (*StillRunningResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/stillRunning/", programID)
 
 	// setup the request
@@ -867,7 +856,7 @@ func (c Client) GetProgramStillRunning(programID string) (*StillRunningResponse,
 }
 
 // GetArtworkForProgramIDs returns artwork for the given programIDs.
-func (c Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkResponse, error) {
+func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkResponse, error) {
 	if len(programIDs) > 500 {
 		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
 	}
@@ -899,7 +888,7 @@ func (c Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkRe
 }
 
 // GetArtworkForRootID returns artwork for the given programIDs.
-func (c Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
+func (c *Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/programs/", rootID)
 
 	// setup the request
@@ -923,7 +912,7 @@ func (c Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
 }
 
 // GetImage returns an image for the given URI.
-func (c Client) GetImage(imageURI string) ([]byte, error) {
+func (c *Client) GetImage(imageURI string) ([]byte, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/image/", imageURI)
 
 	if strings.HasPrefix(imageURI, "https://s3.amazonaws.com") {
@@ -945,7 +934,7 @@ func (c Client) GetImage(imageURI string) ([]byte, error) {
 }
 
 // GetCelebrityArtwork returns artwork for the given programIDs.
-func (c Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, error) {
+func (c *Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/celebrity/", celebrityID)
 
 	// setup the request
@@ -968,48 +957,54 @@ func (c Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, error
 	return programArtwork, err
 }
 
-func (c Client) sendRequest(request *http.Request) (response *http.Response, data []byte, err error) {
+func (c *Client) sendRequest(request *http.Request) (*http.Response, []byte, error) {
 	request.Header.Set("token", c.Token)
 
 	if request.Method == "POST" {
 		request.Header.Set("Content-Type", "application/json")
 	}
 
-	response, err = c.HTTP.Do(request)
-
-	if err != nil {
-		err = fmt.Errorf("cannot reach server. %v", err)
-		return
+	response, httpErr := c.HTTP.Do(request)
+	if httpErr != nil {
+		return nil, nil, fmt.Errorf("cannot reach server. %v", httpErr)
 	}
 
-	if response.StatusCode != http.StatusOK {
-		return
+	if response.StatusCode > 399 {
+		return nil, nil, fmt.Errorf("status code was %d, expected 2XX-3XX", response.StatusCode)
+	}
+
+	// This is only for getting programs.
+	//
+	// From the docs:
+	// Your client must send an Accept-Encoding that has "deflate,gzip" in it, even though the response will be gzip'ed.
+	// This is due to an implementation bug in 20140530 which will be fixed in 20141201.
+	//
+	// Not actually fixed yet and Go disables automatic decompression if Accept-Encoding is set, so we are stuck doing the decompression ourselves.
+	var reader = response.Body
+	if response.Header.Get("Content-Encoding") == "gzip" && !response.Uncompressed {
+		readerG, errG := gzip.NewReader(reader)
+		if errG == nil {
+			reader = readerG
+		} else {
+			return nil, nil, errG
+		}
 	}
 
 	buf := &bytes.Buffer{}
-	if _, copyErr := io.Copy(buf, response.Body); copyErr != nil {
+	if _, copyErr := io.Copy(buf, reader); copyErr != nil {
 		return nil, nil, copyErr
 	}
 
-	err = response.Body.Close()
-	if err != nil {
-		err = fmt.Errorf("cannot read response. %v", err)
-	}
-
-	data = buf.Bytes()
-
-	peekBuf := &bytes.Buffer{}
-	if _, copyErr := io.Copy(peekBuf, response.Body); copyErr != nil {
-		return nil, nil, copyErr
+	if closeErr := response.Body.Close(); closeErr != nil {
+		return nil, nil, fmt.Errorf("cannot read response. %v", closeErr)
 	}
 
 	baseResp := &BaseResponse{}
-
-	if unmarshalErr := json.Unmarshal(peekBuf.Bytes(), baseResp); unmarshalErr == nil {
-		if baseResp.Response != "OK" || baseResp.Code != 0 {
+	if unmarshalErr := json.Unmarshal(buf.Bytes(), baseResp); unmarshalErr == nil {
+		if ((baseResp.Response != "OK" && baseResp.Response != "") || (baseResp.Message != "OK" && baseResp.Message != "")) && baseResp.Code != 0 {
 			return nil, nil, baseResp
 		}
 	}
 
-	return
+	return response, buf.Bytes(), nil
 }
