@@ -5,15 +5,15 @@ package schedulesdirect
 import (
 	"bytes"
 	"compress/gzip"
-	"compress/zlib"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -48,67 +48,70 @@ import (
 var (
 	APIVersion     = "20141201"
 	DefaultBaseURL = "https://json.schedulesdirect.org/"
-	UserAgent      = "TBD"
-	ActiveClient   *Client
+	UserAgent      = "go.schedulesdirect (Go-http-client/1.1)"
 )
+
+// BaseResponse contains the fields that every request is expected to return.
+type BaseResponse struct {
+	Response string    `json:"response"`
+	Code     int       `json:"code"`
+	ServerID string    `json:"serverID"`
+	Message  string    `json:"message"`
+	DateTime time.Time `json:"datetime"`
+}
+
+// Error returns a error string.
+func (e *BaseResponse) Error() string {
+	return e.Message
+}
 
 // A TokenResponse stores the SD json response message for token request.
 type TokenResponse struct {
-	Code     int    `json:"code"`
-	Message  string `json:"message"`
-	ServerID string `json:"serverID"`
-	Token    string `json:"token"`
+	BaseResponse
+
+	Token string `json:"token"`
 }
 
 // A VersionResponse stores the SD json response message for a version request.
 type VersionResponse struct {
-	Response string    `json:"response"`
-	Code     int       `json:"code"`
-	Client   string    `json:"client"`
-	Version  string    `json:"version,omitempty"`
-	ServerID string    `json:"serverID"`
-	DateTime time.Time `json:"datetime"`
+	BaseResponse
+
+	Version string `json:"version,omitempty"`
 }
 
-// An AddLineupResponse stores the SD json message returned after attempting
-// to add a lineup.
-type AddLineupResponse struct {
-	Response         string    `json:"response"`
-	Code             int       `json:"code"`
-	ServerID         string    `json:"serverID"`
-	Message          string    `json:"message"`
-	ChangesRemaining int       `json:"changesRemaining"`
-	DateTime         time.Time `json:"datetime"`
+// A ChangeLineupResponse stores the SD json message returned after attempting
+// to add or delete a lineup.
+type ChangeLineupResponse struct {
+	BaseResponse
+
+	ChangesRemaining int `json:"changesRemaining"`
 }
 
 // A LineupResponse stores the SD json message returned after requesting
 // to list subscribed lineups.
 type LineupResponse struct {
-	ServerID string    `json:"serverID"`
-	DateTime time.Time `json:"datetime"`
-	Lineups  []Lineup  `json:"lineups"`
+	BaseResponse
+
+	Lineups []Lineup `json:"lineups"`
 }
 
 // A StatusResponse stores the SD json message returned after requesting system
 // status.  SystemStatus[0].Status should be "Online" before proceeding.
 type StatusResponse struct {
+	BaseResponse
+
 	Account        AccountInfo `json:"account"`
 	Lineups        []Lineup    `json:"lineups"`
 	LastDataUpdate string      `json:"lastDataUpdate"`
 	Notifications  []string    `json:"notifications"`
 	SystemStatus   []Status    `json:"systemStatus"`
-	ServerID       string      `json:"serverID"`
-	Code           int         `json:"code"`
 }
 
 // A StatusError struct stores the error response to a status request.
 type StatusError struct {
-	Response string `json:"response"`
-	Code     int    `json:"code"`
-	ServerID string `json:"serverID"`
-	Message  string `json:"message"`
-	Datetime string `json:"datetime"`
-	Token    string `json:"token"`
+	BaseResponse
+
+	Token string `json:"token"`
 }
 
 // A Status stores the SD json message containing system status information
@@ -163,9 +166,10 @@ type ChannelResponse struct {
 
 // A ChannelResponseMeta stores the metadata field associated with a channel response
 type ChannelResponseMeta struct {
-	Lineup    string    `json:"lineup"`
-	Modified  time.Time `json:"modified"`
-	Transport string    `json:"transport"`
+	Lineup     string    `json:"lineup"`
+	Modified   time.Time `json:"modified"`
+	Transport  string    `json:"transport"`
+	Modulation string    `json:"modulation"`
 }
 
 // A Station stores the SD json that describes a station.
@@ -186,22 +190,34 @@ type StationLogo struct {
 	URL    string `json:"URL"`
 	Height int    `json:"height"`
 	Width  int    `json:"width"`
-	Md5    string `json:"md5"`
+	MD5    string `json:"md5"`
 }
 
 // A ChannelMap stores the station id to channel mapping
 type ChannelMap struct {
-	StationID string `json:"stationID"`
-	Channel   string `json:"channel,omitempty"`
-	UhfVhf    int    `json:"uhfVhf,omitempty"`
-	AtscMajor int    `json:"atscMajor,omitempty"`
-	AtscMinor int    `json:"atscMinor,omitempty"`
+	Channel              string `json:"channel,omitempty"`
+	ChannelMajor         int    `json:"channelMajor,omitempty"`
+	ChannelMinor         int    `json:"channelMinor,omitempty"`
+	DeliverySystem       string `json:"deliverySystem,omitempty"`
+	FED                  string `json:"fec,omitempty"`
+	FrequencyHertz       int    `json:"frequencyHz,omitempty"`
+	LogicalChannelNumber string `json:"logicalChannelNumber,omitempty"`
+	MatchType            string `json:"matchType,omitempty"`
+	ModulationSystem     string `json:"modulationSystem,omitempty"`
+	NetworkID            int    `json:"networkID,omitempty"`
+	Polarization         string `json:"polarization,omitempty"`
+	ProviderCallsign     string `json:"providerCallsign,omitempty"`
+	ServiceID            int    `json:"serviceID,omitempty"`
+	StationID            string `json:"stationID,omitempty"`
+	Symbolrate           int    `json:"symbolrate,omitempty"`
+	TransportID          int    `json:"transportID,omitempty"`
+	VirtualChannel       string `json:"virtualChannel,omitempty"`
 }
 
 // A Schedule stores the program information for a given stationID
 type Schedule struct {
 	StationID string       `json:"stationID"`
-	MetaData  ScheduleMeta `json:"metadata"`
+	Metadata  ScheduleMeta `json:"metadata"`
 	Programs  []Program    `json:"programs"`
 }
 
@@ -224,7 +240,7 @@ type SyndicationType struct {
 type Program struct {
 	ProgramID           string          `json:"programID,omitempty"`
 	AirDateTime         time.Time       `json:"airDateTime,omitempty"`
-	Md5                 string          `json:"md5,omitempty"`
+	MD5                 string          `json:"md5,omitempty"`
 	Duration            int             `json:"duration,omitempty"`
 	New                 bool            `json:"new,omitempty"`
 	CableInTheClassroom bool            `json:"cableInTheClassRoom,omitempty"`
@@ -241,102 +257,80 @@ type Program struct {
 	TimeApproximate     bool            `json:"timeApproximate,omitempty"`
 	AudioProperties     []string        `json:"audioProperties,omitempty"`
 	Syndication         SyndicationType `json:"syndication,omitempty"`
-	Ratings             []ProgramRating `json:"ratings,omitempty"`
+	Ratings             []Rating        `json:"ratings,omitempty"`
 	ProgramPart         Part            `json:"multipart,omitempty"`
 	VideoProperties     []string        `json:"videoProperties,omitempty"`
 }
 
-// A ProgramRating stores ratings board information for a program
-type ProgramRating struct {
+// A Rating stores ratings board information for a program
+type Rating struct {
 	Body string `json:"body"`
 	Code string `json:"code"`
 }
 
+// Title contains the title of a program.
 type Title struct {
 	Title120 string `json:"title120,omitempty"`
 }
 
+// EventDetails indicates the type of program.
 type EventDetails struct {
 	SubType *string `json:"subType,omitempty"`
 }
 
-type ContentRating struct {
-	Body string `json:"body"`
-	Code string `json:"code"`
-}
-
+// Metadata stores meta information for a program.
 type Metadata struct {
-	Episode       *int `json:"episode,omitzero"`
-	Season        *int `json:"season,omitzero"`
-	TotalEpisodes *int `json:"totalEpisodes,omitempty"`
+	Episode       int `json:"episode,omitzero"`
+	Season        int `json:"season,omitzero"`
+	TotalEpisodes int `json:"totalEpisodes,omitempty"`
+	TotalSeasons  int `json:"totalSeasons,omitempty"`
 }
 
 // A ProgramInfo type stores program information for a program
 type ProgramInfo struct {
 	ProgramID       string                   `json:"programID,omitempty"`
 	Titles          []Title                  `json:"titles,omitempty"`
-	EventDetails    *EventDetails            `json:"eventDetails,omitempty"`
-	Descriptions    map[string][]Description `json:"descriptions"`
-	OriginalAirDate string                   `json:"originalAirDate"`
+	EventDetails    EventDetails             `json:"eventDetails,omitempty"`
+	Descriptions    map[string][]Description `json:"descriptions,omitempty"`
+	OriginalAirDate string                   `json:"originalAirDate,omitempty"`
 	Genres          []string                 `json:"genres,omitempty"`
 	EpisodeTitle150 string                   `json:"episodeTitle150,omitempty"`
-	Metadata        []map[string]Metadata    `json:"metadata"`
+	Metadata        []map[string]Metadata    `json:"metadata,omitempty"`
 	Keywords        map[string][]string      `json:"keyWords,omitempty"`
-	Movie           *Movie                   `json:"movie,omitempty"`
-	Cast            []*Person                `json:"cast,omitempty"`
-	Crew            []*Person                `json:"crew,omitempty"`
-	ContentRating   []ContentRating          `json:"contentRating,omitempty"`
+	Movie           Movie                    `json:"movie,omitempty"`
+	Cast            []Person                 `json:"cast,omitempty"`
+	Crew            []Person                 `json:"crew,omitempty"`
+	ContentRating   []Rating                 `json:"contentRating,omitempty"`
 	EntityType      string                   `json:"entityType,omitempty"`
-	ShowType        string                   `json:"showType"`
-	HasImageArtWork bool                     `json:"hasImageArtwork"`
-	Md5             string                   `json:"md5"`
+	ShowType        string                   `json:"showType,omitempty"`
+	HasImageArtWork bool                     `json:"hasImageArtwork,omitempty"`
+	MD5             string                   `json:"md5,omitempty"`
 }
 
-// A ProgramMetaItem stores meta information for a program
-type ProgramMetaItem struct {
-	string map[string]struct {
-		TotalEpisodes int `json:"totalEpisodes,ommitempty"`
-		Season        int `json:"season,omitempty"`
-		Episode       int `json:"episode,omitmepty"`
-	}
+// A MovieQualityRating describes ratings for the quality of a movie.
+type MovieQualityRating struct {
+	Increment   string `json:"increment,omitempty"`
+	MaxRating   string `json:"maxRating,omitempty"`
+	MinRating   string `json:"minRating,omitempty"`
+	Rating      string `json:"rating,omitempty"`
+	RatingsBody string `json:"ratingsBody,omitmepty"`
 }
 
 // A Movie type stores information about a movie
 type Movie struct {
-	Duration      *int    `json:"duration,omitempty"`
-	Year          *string `json:"year,omitempty"`
-	QualityRating []*struct {
-		Increment   *string `json:"increment,omitempty"`
-		MaxRating   *string `json:"maxRating,omitempty"`
-		MinRating   *string `json:"minRating,omitempty"`
-		Rating      *string `json:"rating,omitempty"`
-		RatingsBody *string `json:"ratingsBody,omitmepty"`
-	} `json:"qualityRating,omitempty"`
+	Duration      int                  `json:"duration,omitempty"`
+	Year          string               `json:"year,omitempty"`
+	QualityRating []MovieQualityRating `json:"qualityRating,omitempty"`
 }
 
 // Person stores information for an acting credit.
 type Person struct {
-	PersonID      *string `json:"personId,omitmepty"`
-	NameID        *string `json:"nameId,omitempty"`
-	Name          *string `json:"name,omitempty"`
-	Role          *string `json:"role,omitempty"`
-	CharacterName *string `json:"characterName,omitempty"`
-	BillingOrder  *string `json:"billingOrder,omitempty"`
-}
-
-// ProgramInfoError stores the error response for a program request
-type ProgramInfoError struct {
-	Response string    `json:"reponse"`
-	Code     int       `json:"code"`
-	ServerID string    `json:"serverID"`
-	Message  string    `json:"message"`
-	DateTime time.Time `json:"datetime"`
-}
-
-// ProgramDescriptions stores the descriptive summaries for a program
-type ProgramDescriptions struct {
-	Description100  []Description `json:"description100,omitempty"`
-	Description1000 []Description `json:"description1000,omitempty"`
+	PersonID      string `json:"personId,omitmepty"`
+	NameID        string `json:"nameId,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Role          string `json:"role,omitempty"`
+	CharacterName string `json:"characterName,omitempty"`
+	BillingOrder  string `json:"billingOrder,omitempty"`
 }
 
 // Description helps store the descriptions for programs
@@ -351,91 +345,150 @@ type Part struct {
 	TotalParts int `json:"totalParts"`
 }
 
-// LastmodifiedRequest stores the information needed to make a last modified request.
-type LastmodifiedRequest struct {
-	StationID string `json:"stationID"`
-	Days      int    `json:"days"`
+// StationScheduleRequest is the payload used to get schedule information for a station as well as last modified information.
+type StationScheduleRequest struct {
+	StationID string   `json:"stationID"`
+	Dates     []string `json:"dates,omitempty"`
+}
+
+// LastModifiedEntry contains information about the last modification of a station schedule.
+type LastModifiedEntry struct {
+	Code         int       `json:"code"`
+	LastModified time.Time `json:"lastModified"`
+	MD5          string    `json:"md5"`
+	Message      string    `json:"message"`
+}
+
+// ProgramDescription provides a generic description of a program.
+type ProgramDescription struct {
+	Code            int    `json:"code"`
+	Description100  string `json:"description100"`
+	Description1000 string `json:"description1000"`
+}
+
+// LanguageCrossReference provides translated titles and descriptions for a program.
+type LanguageCrossReference struct {
+	BaseResponse
+
+	DescriptionLanguage     string `json:"descriptionLanguage"`
+	DescriptionLanguageName string `json:"descriptionLanguageName"`
+	MD5                     string `json:"md5"`
+	ProgramID               string `json:"programID"`
+	TitleLanguage           string `json:"titleLanguage"`
+	TitleLanguageName       string `json:"titleLanguageName"`
+}
+
+// A StillRunningResponse describes the current real time state of a program.
+type StillRunningResponse struct {
+	BaseResponse
+
+	EventStartDateTime string `json:"eventStartDateTime"`
+	IsComplete         bool   `json:"isComplete"`
+	ProgramID          string `json:"programID"`
+	Result             struct {
+		AwayTeam struct {
+			Name  string `json:"name"`
+			Score string `json:"score"`
+		} `json:"awayTeam"`
+		HomeTeam struct {
+			Name  string `json:"name"`
+			Score string `json:"score"`
+		} `json:"homeTeam"`
+	} `json:"result"`
+}
+
+// ProgramArtwork describes a single piece of artwork related to a program.
+type ProgramArtwork struct {
+	Aspect   string            `json:"aspect"`
+	Category string            `json:"category"`
+	Height   string            `json:"height"`
+	Primary  string            `json:"primary"`
+	Size     string            `json:"size"`
+	Text     string            `json:"text"`
+	Tier     string            `json:"tier"`
+	URI      string            `json:"uri"`
+	Width    string            `json:"width"`
+	Caption  map[string]string `json:"caption"`
+}
+
+// ProgramArtworkResponse is a container struct for artwork relating to a program.
+type ProgramArtworkResponse struct {
+	ProgramID string           `json:"programID"`
+	Artwork   []ProgramArtwork `json:"data"`
 }
 
 // Client type
 type Client struct {
-	// Our HTTP client to communicate with SD
-	//client *http.Client
-
 	// The Base URL for SD requests
 	BaseURL *url.URL
 
-	// HTTP
+	// Our HTTP client to communicate with SD
 	HTTP *http.Client
 
 	// The token
 	Token string
-
-	// User agent string
-	UserAgent string
 }
 
-// NewClient returns a new SD API client.  Uses http.DefaultClient if no
-// client is provided.
-//
-// TODO Add userAgent string once determined
-func NewClient(username string, password string) *Client {
-	baseURL, _ := url.Parse(DefaultBaseURL)
-	c := &Client{HTTP: &http.Client{}, BaseURL: baseURL}
-	token, _ := c.GetToken(username, password)
+// NewClient returns a new SD API client. Uses http.DefaultClient if no http.Client is set.
+func NewClient(username string, password string) (*Client, error) {
+	baseURL, parseErr := url.Parse(DefaultBaseURL)
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	c := &Client{HTTP: http.DefaultClient, BaseURL: baseURL}
+	token, tokenErr := c.GetToken(username, password)
+	if tokenErr != nil {
+		return nil, tokenErr
+	}
 	c.Token = token
-	ActiveClient = c
-	return c
+	return c, nil
 }
 
 // encryptPassword returns the sha1 hex encoding of the string argument
-func encryptPassword(password string) string {
-	encoded := sha1.New()
-	encoded.Write([]byte(password))
-	return hex.EncodeToString(encoded.Sum(nil))
+func encryptPassword(password string) (string, error) {
+	encoded := sha1.New() // #nosec
+	if _, writeErr := encoded.Write([]byte(password)); writeErr != nil {
+		return "", writeErr
+	}
+	return hex.EncodeToString(encoded.Sum(nil)), nil
 }
 
 // GetToken returns a session token if the supplied username/password
 // successfully authenticate.
 func (c Client) GetToken(username string, password string) (string, error) {
-	// The SchedulesDirect token url
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/token")
 
 	// encrypt the password
-	sha1hexPW := encryptPassword(password)
+	sha1hexPW, encryptError := encryptPassword(password)
+	if encryptError != nil {
+		return "", encryptError
+	}
 
-	// TODO: Evaluate performance of this string concatenation, not that this
-	// should run often.
-	var jsonStr = []byte(
-		`{"username":"` + username +
-			`", "password":"` + sha1hexPW + `"}`)
+	js, jsErr := json.Marshal(map[string]string{"username": username, "password": sha1hexPW})
+	if jsErr != nil {
+		return "", jsErr
+	}
 
 	// setup the request
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("Content-Type", "application/json")
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(js))
+	if httpErr != nil {
+		return "", httpErr
+	}
 
 	// perform the POST
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	_, data, err := c.sendRequest(req)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
 	// create a TokenResponse struct, return if err
 	r := new(TokenResponse)
 
 	// decode the response body into the new TokenResponse struct
-	err = json.NewDecoder(resp.Body).Decode(r)
+	err = json.Unmarshal(data, &r)
 	if err != nil {
 		return "", err
 	}
-
-	// Print some debugging output
-	//fmt.Println("response Status:", resp.Status)
-	//fmt.Println("response Headers:", resp.Header)
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Println("response Body:", string(body))
 
 	// return the token string
 	return r.Token, nil
@@ -444,123 +497,124 @@ func (c Client) GetToken(username string, password string) (string, error) {
 // GetStatus returns a StatusResponse for this account.
 func (c Client) GetStatus() (*StatusResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/status")
-	fmt.Println("URL:>", url)
 	s := new(StatusResponse)
 
-	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", c.Token)
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	_, data, err := c.sendRequest(req)
 	if err != nil {
-		log.Fatal(err)
-		return s, err
+		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return s, err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	// Copy the body to Stdout
-	//_, err = io.Copy(os.Stdout, resp.Body)
-
-	err = json.NewDecoder(resp.Body).Decode(s)
-	if err != nil {
-		fmt.Println("Error parsing status response")
-		log.Fatal(err)
-		return s, err
-	}
-	//fmt.Println("Current Status is: ")
-	//fmt.Println(s.SystemStatus[0].Status)
-	return s, nil
+	err = json.Unmarshal(data, &s)
+	return s, err
 }
 
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
-func (c Client) AddLineup(lineupURI string) error {
-	//url := "https://json.schedulesdirect.org" + lineupURI
-	url := fmt.Sprint(DefaultBaseURL, lineupURI)
-	fmt.Println("URL:>", url)
+func (c Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
 
-	req, err := http.NewRequest("PUT", url, nil)
-	req.Header.Set("token", c.Token)
+	req, httpErr := http.NewRequest("PUT", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	_, data, err := c.sendRequest(req)
 	if err != nil {
-		log.Fatal(err)
-
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("Add Lineup Response:", string(body))
-	return nil
-}
-
-// DelLineup deletes the given lineup uri from the users SchedulesDirect account.
-func (c Client) DelLineup(lineupURI string) error {
-	//url := "https://json.schedulesdirect.org" + lineupURI
-	url := fmt.Sprint(DefaultBaseURL, lineupURI)
-	fmt.Println("URL:>", url)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	req.Header.Set("token", c.Token)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("Delete Lineup Response:	Premiere //- Should only be found in Miniseries and Movie program types.", string(body))
-	return nil
-}
-
-// GetHeadends returns the map of headends for the given postal code.
-func (c Client) GetHeadends(postalCode string) ([]Headend, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion,
-		"/headends?country=USA&postalcode=", postalCode)
-	fmt.Println("URL:>", url)
-
-	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", c.Token)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
+
+	r := &ChangeLineupResponse{}
+
+	err = json.Unmarshal(data, &r)
+	return r, err
+}
+
+// DeleteLineup deletes the given lineup uri from the users SchedulesDirect account.
+func (c Client) DeleteLineup(lineupURI string) (*ChangeLineupResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
+
+	req, httpErr := http.NewRequest("DELETE", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	// make the slice of headends
+	r := &ChangeLineupResponse{}
+
+	err = json.Unmarshal(data, &r)
+	return r, err
+}
+
+// AutomapLineup accepts the "lineup.json" output as a byte slice from SiliconDust's HDHomerun devices.
+// It then runs a comparison against ScheduleDirect's database and returns potential lineup matches.
+func (c Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/map/lineup")
+
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(hdhrLineupJSON))
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	matches := make(map[string]int)
+
+	err = json.Unmarshal(data, &matches)
+	return matches, err
+}
+
+// SubmitLineup should be called if AutomapLineup doesn't return candidates after you identify
+// the lineup you were trying to find via automapping.
+func (c Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/map/lineup/", lineupID)
+
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(hdhrLineupJSON))
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	baseR := &BaseResponse{}
+
+	err = json.Unmarshal(data, &baseR)
+
+	return baseR, err
+}
+
+// GetHeadends returns the map of headends for the given country and postal code.
+func (c Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) {
+	uriPart := fmt.Sprintf("/headends?country=%s&postalcode=%s", countryCode, postalCode)
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, uriPart)
+
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
 	h := []Headend{}
 
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Println("PostalResponse Body:", string(body))
-
-	// decode the body
-	err = json.NewDecoder(resp.Body).Decode(&h)
+	err = json.Unmarshal(data, &h)
 	if err != nil {
-		fmt.Println("Error parsing headend responseline")
-		log.Fatal(err)
 		return nil, err
 	}
 	return h, nil
@@ -568,111 +622,56 @@ func (c Client) GetHeadends(postalCode string) ([]Headend, error) {
 
 // GetChannels returns the channels in a given lineup
 func (c Client) GetChannels(lineupURI string) (*ChannelResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, lineupURI)
-	fmt.Println("URL:>", url)
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
 
-	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", c.Token)
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	_, data, err := c.sendRequest(req)
 	if err != nil {
-		log.Fatal(err)
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return nil, err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	// make the map
 	h := new(ChannelResponse)
 
-	// debug code
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Println(string(body))
-
-	// decode the body into the map
-	err = json.NewDecoder(resp.Body).Decode(&h)
-	if err != nil {
-		fmt.Println("Error parsing channel response line")
-		log.Fatal(err)
-		return nil, err
-	}
-
-	return h, nil
+	err = json.Unmarshal(data, &h)
+	return h, err
 }
 
 // GetSchedules returns the set of schedules requested.  As a whole the response is not valid json but each individual line is valid.
-func (c Client) GetSchedules(stationIds []string, dates []string) ([]Schedule, error) {
+func (c Client) GetSchedules(requests []StationScheduleRequest) ([]Schedule, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules")
-	fmt.Println("URL:>", url)
 
-	//buffer to store the json request
-	var buffer bytes.Buffer
-
-	//creating the request
-	buffer.WriteString("[")
-	for index, station := range stationIds {
-		//fmt.Println(station)
-		buffer.WriteString(`{"stationID":"` + station + `","date":[`)
-		for index2, date := range dates {
-			buffer.WriteString(`"` + date + `"`)
-			if index2 != len(dates)-1 {
-				buffer.WriteString(",")
-			} else {
-				buffer.WriteString("]")
-			}
-		}
-		if index != len(stationIds)-1 {
-			buffer.WriteString("},")
-		} else {
-			buffer.WriteString("}")
-		}
+	js, jsErr := json.Marshal(requests)
+	if jsErr != nil {
+		return nil, jsErr
 	}
-	buffer.WriteString("]")
 
 	//setup the request
-	req, err := http.NewRequest("POST", url, &buffer)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Encoding", "deflate,gzip")
-	req.Header.Set("token", c.Token)
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(js))
+	if httpErr != nil {
+		return nil, httpErr
+	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	_, data, err := c.sendRequest(req)
 	if err != nil {
-		log.Fatal(err)
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return nil, err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	// decode the response
 	var h []Schedule
 
-	// debug code
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Println(string(body))
-
-	// decode the body
-	err = json.NewDecoder(resp.Body).Decode(&h)
-	if err != nil {
-		fmt.Println("Error parsing schedules response")
-		log.Fatal(err)
-		return nil, err
-	}
-
-	return h, nil
+	err = json.Unmarshal(data, &h)
+	return h, err
 }
 
 // GetProgramInfo returns the set of program details for the given set of programs
 func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
+	if len(programIDs) > 5000 {
+		return nil, errors.New("you may only request at most 5000 program IDs per request, please lower your request amount")
+	}
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/programs")
-	fmt.Println("URL:>", url)
 
 	js, jsErr := json.Marshal(programIDs)
 	if jsErr != nil {
@@ -684,92 +683,333 @@ func (c Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	if httpErr != nil {
 		return nil, httpErr
 	}
-	//req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Encoding", "deflate,gzip")
-	req.Header.Set("token", c.Token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, _, err := c.sendRequest(req)
 	if err != nil {
-		log.Fatal(err)
 		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return nil, err
-	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
-
+	// Your client must send an Accept-Encoding that has "deflate,gzip" in it, even though the response will be gzip'ed.
+	// This is due to an implementation bug in 20140530 which will be fixed in 20141201.
+	//
+	// Not actually fixed yet and Go disables automatic decompression if Accept-Encoding is set, so we are stuck doing the decompression ourselves.
 	var reader = resp.Body
-	switch resp.Header.Get("Content-Encoding") {
-	case "deflate":
-		readerZ, errZ := zlib.NewReader(resp.Body)
-		defer readerZ.Close()
-		if errZ == nil {
-			reader = readerZ
-		} else {
-			return nil, errZ
-		}
-	case "gzip":
+	if resp.Header.Get("Content-Encoding") == "gzip" {
 		readerG, errG := gzip.NewReader(reader)
 		if errG == nil {
 			reader = readerG
 		} else {
 			return nil, errG
 		}
-		defer reader.Close()
 	}
 
 	// create the programs slice
 	var allPrograms []ProgramInfo
 
-	// decode the body
 	if err = json.NewDecoder(reader).Decode(&allPrograms); err != nil {
-		fmt.Println("Error parsing programs response")
-		log.Fatal(err)
 		return nil, err
 	}
+
+	err = reader.Close()
 
 	return allPrograms, err
 }
 
-// GetLastModified returns
-func (c Client) GetLastModified(theRequest []LastmodifiedRequest) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules/md5")
-	fmt.Println("URL:>", url)
+// GetProgramDescription returns a set of program descriptions for the given set of program IDs.
+func (c Client) GetProgramDescription(programIDs []string) (map[string]ProgramDescription, error) {
+	if len(programIDs) > 500 {
+		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
+	}
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/description")
 
+	js, jsErr := json.Marshal(programIDs)
+	if jsErr != nil {
+		return nil, jsErr
+	}
+
+	// setup the request
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(js))
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	descriptions := make(map[string]ProgramDescription)
+
+	if err = json.Unmarshal(data, &descriptions); err != nil {
+		return nil, err
+	}
+
+	return descriptions, err
+}
+
+// GetLanguageCrossReference returns a map of translated titles and descriptions for the given programIDs.
+func (c Client) GetLanguageCrossReference(programIDs []string) (map[string][]LanguageCrossReference, error) {
+	// A 500 item limit is not defined in the docs but seems like the reasonable default.
+	if len(programIDs) > 500 {
+		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
+	}
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/xref")
+
+	js, jsErr := json.Marshal(programIDs)
+	if jsErr != nil {
+		return nil, jsErr
+	}
+
+	// setup the request
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(js))
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	translations := make(map[string][]LanguageCrossReference)
+
+	if err = json.Unmarshal(data, &translations); err != nil {
+		return nil, err
+	}
+
+	return translations, err
+}
+
+// GetLastModified returns the last modified information for the given station IDs and optional dates.
+func (c Client) GetLastModified(requests []StationScheduleRequest) (map[string]map[string]LastModifiedEntry, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules/md5")
+
+	s := make(map[string]map[string]LastModifiedEntry)
+
+	js, jsErr := json.Marshal(requests)
+	if jsErr != nil {
+		return s, jsErr
+	}
+
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(js))
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(data, &s)
+
+	return s, err
 }
 
 // GetLineups returns a LineupResponse which contains all the lineups subscribed
 // to by this account.
 func (c Client) GetLineups() (*LineupResponse, error) {
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/lineups")
-	fmt.Println("URL:>", url)
 	s := new(LineupResponse)
 
-	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("token", c.Token)
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	_, data, err := c.sendRequest(req)
 	if err != nil {
-		log.Fatal(err)
-		return s, err
+		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatal(resp.Status)
-		return s, err
+
+	err = json.Unmarshal(data, &s)
+
+	return s, err
+}
+
+// DeleteSystemMessage deletes a system message from the status response.
+func (c Client) DeleteSystemMessage(messageID string) error {
+	url := fmt.Sprint(DefaultBaseURL, "/messages/", messageID)
+
+	req, httpErr := http.NewRequest("DELETE", url, nil)
+	if httpErr != nil {
+		return httpErr
 	}
-	defer resp.Body.Close() //resp.Body.Close() will run when we're finished.
 
-	//Copy the body to Stdout
-	//_, err = io.Copy(os.Stdout, resp.Body)
+	_, _, err := c.sendRequest(req)
 
-	err = json.NewDecoder(resp.Body).Decode(s)
+	return err
+}
+
+// GetProgramStillRunning returns the real time status of the given program ID.
+func (c Client) GetProgramStillRunning(programID string) (*StillRunningResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/stillRunning/", programID)
+
+	// setup the request
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
 	if err != nil {
-		fmt.Println("Error parsing status response")
-		log.Fatal(err)
-		return s, err
+		return nil, err
 	}
-	return s, nil
+
+	stillRunningResp := &StillRunningResponse{}
+
+	if err = json.Unmarshal(data, &stillRunningResp); err != nil {
+		return nil, err
+	}
+
+	return stillRunningResp, err
+}
+
+// GetArtworkForProgramIDs returns artwork for the given programIDs.
+func (c Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkResponse, error) {
+	if len(programIDs) > 500 {
+		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
+	}
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/programs")
+
+	js, jsErr := json.Marshal(programIDs)
+	if jsErr != nil {
+		return nil, jsErr
+	}
+
+	// setup the request
+	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(js))
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	programArtwork := make([]ProgramArtworkResponse, 0)
+
+	if err = json.Unmarshal(data, &programArtwork); err != nil {
+		return nil, err
+	}
+
+	return programArtwork, err
+}
+
+// GetArtworkForRootID returns artwork for the given programIDs.
+func (c Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/programs/", rootID)
+
+	// setup the request
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	programArtwork := make([]ProgramArtwork, 0)
+
+	if err = json.Unmarshal(data, &programArtwork); err != nil {
+		return nil, err
+	}
+
+	return programArtwork, err
+}
+
+// GetImage returns an image for the given URI.
+func (c Client) GetImage(imageURI string) ([]byte, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/image/", imageURI)
+
+	if strings.HasPrefix(imageURI, "https://s3.amazonaws.com") {
+		url = imageURI
+	}
+
+	// setup the request
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+// GetCelebrityArtwork returns artwork for the given programIDs.
+func (c Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/celebrity/", celebrityID)
+
+	// setup the request
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	programArtwork := make([]ProgramArtwork, 0)
+
+	if err = json.Unmarshal(data, &programArtwork); err != nil {
+		return nil, err
+	}
+
+	return programArtwork, err
+}
+
+func (c Client) sendRequest(request *http.Request) (response *http.Response, data []byte, err error) {
+	request.Header.Set("token", c.Token)
+
+	if request.Method == "POST" {
+		request.Header.Set("Content-Type", "application/json")
+	}
+
+	response, err = c.HTTP.Do(request)
+
+	if err != nil {
+		err = fmt.Errorf("cannot reach server. %v", err)
+		return
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return
+	}
+
+	buf := &bytes.Buffer{}
+	if _, copyErr := io.Copy(buf, response.Body); copyErr != nil {
+		return nil, nil, copyErr
+	}
+
+	err = response.Body.Close()
+	if err != nil {
+		err = fmt.Errorf("cannot read response. %v", err)
+	}
+
+	data = buf.Bytes()
+
+	peekBuf := &bytes.Buffer{}
+	if _, copyErr := io.Copy(peekBuf, response.Body); copyErr != nil {
+		return nil, nil, copyErr
+	}
+
+	baseResp := &BaseResponse{}
+
+	if unmarshalErr := json.Unmarshal(peekBuf.Bytes(), baseResp); unmarshalErr == nil {
+		if baseResp.Response != "OK" || baseResp.Code != 0 {
+			return nil, nil, baseResp
+		}
+	}
+
+	return
 }
