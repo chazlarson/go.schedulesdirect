@@ -51,6 +51,29 @@ var (
 	UserAgent      = "go.schedulesdirect (Go-http-client/1.1)"
 )
 
+// Date is a Schedules Direct specific date format (YYYY-MM-DD) with (Un)MarshalJSON functions.
+type Date time.Time
+
+// MarshalJSON formats the underlying time.Time to Schedule Direct's format.
+func (p Date) MarshalJSON() ([]byte, error) {
+	t := time.Time(p)
+	str := "\"" + t.Format("2006-01-02") + "\""
+
+	return []byte(str), nil
+}
+
+// UnmarshalJSON converts Schedule Direct's format to a time.Time.
+func (p *Date) UnmarshalJSON(text []byte) (err error) {
+	strDate := string(text[1:11])
+
+	v, e := time.Parse("2006-01-02", strDate)
+	if e != nil {
+		return fmt.Errorf("schedulesdirect.Date should be a time, error value is: %s", strDate)
+	}
+	*p = Date(v)
+	return nil
+}
+
 // BaseResponse contains the fields that every request is expected to return.
 type BaseResponse struct {
 	Response string    `json:"response"`
@@ -104,7 +127,7 @@ type LineupResponse struct {
 type StatusResponse struct {
 	Account        AccountInfo `json:"account"`
 	Lineups        []Lineup    `json:"lineups"`
-	LastDataUpdate string      `json:"lastDataUpdate"`
+	LastDataUpdate time.Time   `json:"lastDataUpdate"`
 	Notifications  []string    `json:"notifications"`
 	SystemStatus   []Status    `json:"systemStatus"`
 }
@@ -119,9 +142,9 @@ type StatusError struct {
 // A Status stores the SD json message containing system status information
 // usually as part of a StatusResponse.
 type Status struct {
-	Date    string `json:"date"`
-	Status  string `json:"status"`
-	Details string `json:"details"`
+	Date    time.Time `json:"date"`
+	Status  string    `json:"status"`
+	Details string    `json:"details"`
 }
 
 // An AccountInfo stores the SD json message containing account information
@@ -227,8 +250,8 @@ type Schedule struct {
 type ScheduleMeta struct {
 	Modified  string `json:"modified"`
 	MD5       string `json:"md5"`
-	StartDate string `json:"startDate"`
-	EndDate   string `json:"endDate"`
+	StartDate Date   `json:"startDate"`
+	EndDate   Date   `json:"endDate"`
 	Days      int    `json:"days"`
 }
 
@@ -259,73 +282,64 @@ type Program struct {
 	TimeApproximate     bool            `json:"timeApproximate,omitempty"`
 	AudioProperties     []string        `json:"audioProperties,omitempty"`
 	Syndication         SyndicationType `json:"syndication,omitempty"`
-	Ratings             []Rating        `json:"ratings,omitempty"`
+	Ratings             []ContentRating `json:"ratings,omitempty"`
 	ProgramPart         Part            `json:"multipart,omitempty"`
 	VideoProperties     []string        `json:"videoProperties,omitempty"`
 }
 
-// A Rating stores ratings board information for a program
-type Rating struct {
-	Body string `json:"body"`
-	Code string `json:"code"`
-}
-
-// Title contains the title of a program.
-type Title struct {
-	Title120 string `json:"title120,omitempty"`
-}
-
-// EventDetails indicates the type of program.
-type EventDetails struct {
-	SubType *string `json:"subType,omitempty"`
-}
-
-// Metadata stores meta information for a program.
-type Metadata struct {
-	Episode       int `json:"episode,omitzero"`
-	Season        int `json:"season,omitzero"`
-	TotalEpisodes int `json:"totalEpisodes,omitempty"`
-	TotalSeasons  int `json:"totalSeasons,omitempty"`
-}
-
-// A ProgramInfo type stores program information for a program
+// A ProgramInfo type stores information for a program.
 type ProgramInfo struct {
-	ProgramID       string                   `json:"programID,omitempty"`
-	Titles          []Title                  `json:"titles,omitempty"`
-	EventDetails    EventDetails             `json:"eventDetails,omitempty"`
-	Descriptions    map[string][]Description `json:"descriptions,omitempty"`
-	OriginalAirDate string                   `json:"originalAirDate,omitempty"`
-	Genres          []string                 `json:"genres,omitempty"`
-	EpisodeTitle150 string                   `json:"episodeTitle150,omitempty"`
-	Metadata        []map[string]Metadata    `json:"metadata,omitempty"`
-	Keywords        map[string][]string      `json:"keyWords,omitempty"`
-	Movie           Movie                    `json:"movie,omitempty"`
-	Cast            []Person                 `json:"cast,omitempty"`
-	Crew            []Person                 `json:"crew,omitempty"`
-	ContentRating   []Rating                 `json:"contentRating,omitempty"`
-	EntityType      string                   `json:"entityType,omitempty"`
-	ShowType        string                   `json:"showType,omitempty"`
-	HasImageArtWork bool                     `json:"hasImageArtwork,omitempty"`
-	MD5             string                   `json:"md5,omitempty"`
+	BaseResponse BaseResponse
+
+	Animation         string                   `json:"animation"`
+	Audience          string                   `json:"audience"`
+	Awards            []Award                  `json:"awards"`
+	Cast              []Person                 `json:"cast"`
+	ContentAdvisory   []string                 `json:"contentAdvisory"`
+	ContentRating     []ContentRating          `json:"contentRating"`
+	Crew              []Person                 `json:"crew"`
+	Descriptions      map[string][]Description `json:"descriptions"`
+	Duration          int64                    `json:"duration"`
+	EntityType        string                   `json:"entityType"`
+	EpisodeTitle150   string                   `json:"episodeTitle150"`
+	EventDetails      EventDetails             `json:"eventDetails"`
+	Genres            []string                 `json:"genres"`
+	HasEpisodeArtwork bool                     `json:"hasEpisodeArtwork"`
+	HasImageArtwork   bool                     `json:"hasImageArtwork"`
+	HasMovieArtwork   bool                     `json:"hasMovieArtwork"`
+	HasSeriesArtwork  bool                     `json:"hasSeriesArtwork"`
+	HasSportsArtwork  bool                     `json:"hasSportsArtwork"`
+	Holiday           string                   `json:"holiday"`
+	Keywords          map[string][]string      `json:"keyWords"`
+	MD5               string                   `json:"md5"`
+	Metadata          []map[string]Metadata    `json:"metadata"`
+	Movie             Movie                    `json:"movie"`
+	OfficialURL       string                   `json:"officialURL"`
+	OriginalAirDate   Date                     `json:"originalAirDate"`
+	ProgramID         string                   `json:"programID"`
+	Recommendations   []Recommendation         `json:"recommendations"`
+	ResourceID        string                   `json:"resourceID"`
+	ShowType          string                   `json:"showType"`
+	Titles            []Title                  `json:"titles"`
 }
 
-// A MovieQualityRating describes ratings for the quality of a movie.
-type MovieQualityRating struct {
-	Increment   string `json:"increment,omitempty"`
-	MaxRating   string `json:"maxRating,omitempty"`
-	MinRating   string `json:"minRating,omitempty"`
-	Rating      string `json:"rating,omitempty"`
-	RatingsBody string `json:"ratingsBody,omitmepty"`
+// HasArtwork returns true if the Program has artwork available.
+func (p *ProgramInfo) HasArtwork() bool {
+	return p.HasEpisodeArtwork || p.HasImageArtwork || p.HasMovieArtwork || p.HasSeriesArtwork || p.HasSportsArtwork
 }
 
-// A Movie type stores information about a movie
-type Movie struct {
-	Duration      int                  `json:"duration,omitempty"`
-	Year          string               `json:"year,omitempty"`
-	QualityRating []MovieQualityRating `json:"qualityRating,omitempty"`
+// Award is a award given to a program.
+type Award struct {
+	AwardName string `json:"awardName"`
+	Category  string `json:"category"`
+	Name      string `json:"name"`
+	PersonID  string `json:"personId"`
+	Recipient string `json:"recipient"`
+	Won       bool   `json:"won"`
+	Year      string `json:"year"`
 }
 
-// Person stores information for an acting credit.
+// Person stores information for an acting credit or crew member.
 type Person struct {
 	PersonID      string `json:"personId,omitmepty"`
 	NameID        string `json:"nameId,omitempty"`
@@ -335,10 +349,68 @@ type Person struct {
 	BillingOrder  string `json:"billingOrder,omitempty"`
 }
 
-// Description helps store the descriptions for programs
+// A ContentRating stores ratings board information for a program
+type ContentRating struct {
+	Body    string `json:"body"`
+	Code    string `json:"code"`
+	Country string `json:"country"`
+}
+
+// Description provides a generic description of a program.
 type Description struct {
-	DescriptionLanguage string `json:"descriptionLanguage"`
-	Description         string `json:"description"`
+	Code            int    `json:"code"`
+	Description100  string `json:"description100"`
+	Description1000 string `json:"description1000"`
+}
+
+// A Movie type stores information about a movie
+type Movie struct {
+	Duration      int64                `json:"duration"`
+	QualityRating []MovieQualityRating `json:"qualityRating"`
+	Year          string               `json:"year"`
+}
+
+// Metadata stores meta information for a program.
+type Metadata struct {
+	Episode       int64 `json:"episode"`
+	EpisodeID     int64 `json:"episodeID"`
+	Season        int64 `json:"season"`
+	SeriesID      int64 `json:"seriesID"`
+	TotalEpisodes int64 `json:"totalEpisodes"`
+	TotalSeasons  int64 `json:"totalSeasons"`
+}
+
+// EventDetails contains details about the sporting program related to a game.
+type EventDetails struct {
+	GameDate Date   `json:"gameDate"`
+	Teams    []Team `json:"teams"`
+	Venue    string `json:"venue100"`
+}
+
+// A MovieQualityRating describes ratings for the quality of a movie.
+type MovieQualityRating struct {
+	Increment   string `json:"increment"`
+	MaxRating   string `json:"maxRating"`
+	MinRating   string `json:"minRating"`
+	Rating      string `json:"rating"`
+	RatingsBody string `json:"ratingsBody"`
+}
+
+// Team is a sports team that participated in a game program.
+type Team struct {
+	IsHome bool   `json:"isHome"`
+	Name   string `json:"name"`
+}
+
+// Recommendation is a related content recommendation.
+type Recommendation struct {
+	ProgramID string `json:"programID"`
+	Title120  string `json:"title120"`
+}
+
+// Title contains the title of a program.
+type Title struct {
+	Title120 string `json:"title120"`
 }
 
 // Part stores the information for a part
@@ -403,20 +475,46 @@ type StillRunningResponse struct {
 type ProgramArtwork struct {
 	Aspect   string            `json:"aspect"`
 	Category string            `json:"category"`
-	Height   string            `json:"height"`
+	Height   int               `json:"height,string"`
 	Primary  string            `json:"primary"`
 	Size     string            `json:"size"`
 	Text     string            `json:"text"`
 	Tier     string            `json:"tier"`
 	URI      string            `json:"uri"`
-	Width    string            `json:"width"`
+	Width    int               `json:"width,string"`
 	Caption  map[string]string `json:"caption"`
 }
 
 // ProgramArtworkResponse is a container struct for artwork relating to a program.
 type ProgramArtworkResponse struct {
-	ProgramID string           `json:"programID"`
-	Artwork   []ProgramArtwork `json:"data"`
+	ProgramID string          `json:"programID"`
+	Data      json.RawMessage `json:"data"`
+	Error     *BaseResponse
+	Artwork   *[]ProgramArtwork
+}
+
+// UnmarshalJSON unmarshals the JSON into the ProgramArtworkResponse.
+func (ar *ProgramArtworkResponse) UnmarshalJSON(b []byte) error {
+	switch b[0] {
+	case '[':
+		artworks := make([]ProgramArtwork, 0)
+		if err := json.Unmarshal(b, &artworks); err != nil {
+			return err
+		}
+		ar.Artwork = &artworks
+
+	case '{':
+		baseResp := &BaseResponse{}
+		if err := json.Unmarshal(b, &baseResp); err != nil {
+			return err
+		}
+		ar.Error = baseResp
+
+	default:
+		return errors.New("unexpected char or whatever")
+	}
+
+	return nil
 }
 
 // Client type
@@ -696,7 +794,7 @@ func (c *Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	}
 
 	// create the programs slice
-	var allPrograms []ProgramInfo
+	allPrograms := make([]ProgramInfo, 0)
 
 	if err = json.Unmarshal(data, &allPrograms); err != nil {
 		return nil, err
@@ -957,7 +1055,16 @@ func (c *Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, erro
 	return programArtwork, err
 }
 
+// GetImageURL will return a fully formed image URL for the piece given. If it is already fully formed the input will be returned.
+func (c *Client) GetImageURL(imageURI string) string {
+	if strings.HasPrefix(imageURI, "https://s3.amazonaws.com") {
+		return imageURI
+	}
+	return fmt.Sprint(DefaultBaseURL, APIVersion, "/image/", imageURI)
+}
+
 func (c *Client) sendRequest(request *http.Request) (*http.Response, []byte, error) {
+	request.Header.Set("User-Agent", UserAgent)
 	request.Header.Set("token", c.Token)
 
 	if request.Method == "POST" {
