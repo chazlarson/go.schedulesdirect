@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -199,15 +200,17 @@ type ChannelResponseMeta struct {
 
 // A Station stores the SD json that describes a station.
 type Station struct {
-	Callsign            string          `json:"callsign"`
 	Affiliate           string          `json:"affiliate"`
-	IsCommercialFree    bool            `json:"isCommercialFree"`
-	Name                string          `json:"name"`
 	Broadcaster         BroadcasterInfo `json:"broadcaster"`
 	BroadcastLanguage   []string        `json:"broadcastLanguage"`
-	DescriptionLanguage []string        `json:"descriptionLanguage "`
+	CallSign            string          `json:"callsign"`
+	DescriptionLanguage []string        `json:"descriptionLanguage"`
+	IsCommercialFree    bool            `json:"isCommercialFree"`
 	Logo                StationLogo     `json:"logo"`
+	Logos               []StationLogo   `json:"stationLogo"`
+	Name                string          `json:"name"`
 	StationID           string          `json:"stationID"`
+	IsRadioStation      bool            `json:"isRadioStation"`
 }
 
 // A StationLogo stores the information to locate a station logo
@@ -216,6 +219,7 @@ type StationLogo struct {
 	Height int    `json:"height"`
 	Width  int    `json:"width"`
 	MD5    string `json:"md5"`
+	Source string `json:"source"`
 }
 
 // A ChannelMap stores the station id to channel mapping
@@ -231,10 +235,10 @@ type ChannelMap struct {
 	ModulationSystem     string `json:"modulationSystem,omitempty"`
 	NetworkID            int    `json:"networkID,omitempty"`
 	Polarization         string `json:"polarization,omitempty"`
-	ProviderCallsign     string `json:"providerCallsign,omitempty"`
+	ProviderCallSign     string `json:"providerCallsign,omitempty"`
 	ServiceID            int    `json:"serviceID,omitempty"`
 	StationID            string `json:"stationID,omitempty"`
-	Symbolrate           int    `json:"symbolrate,omitempty"`
+	SymbolRate           int    `json:"symbolrate,omitempty"`
 	TransportID          int    `json:"transportID,omitempty"`
 	VirtualChannel       string `json:"virtualChannel,omitempty"`
 }
@@ -261,12 +265,26 @@ type SyndicationType struct {
 	Type   string `json:"type"`
 }
 
+// PremiereType is used for enumerating the IsPremiereOrFinale field of a Program.
+type PremiereType string
+
+const (
+	Finale         PremiereType = "Finale"
+	Premiere       PremiereType = "Premiere"
+	SeasonFinale   PremiereType = "Season Finale"
+	SeasonPremiere PremiereType = "Season Premiere"
+	SeriesFinale   PremiereType = "Series Finale"
+	SeriesPremiere PremiereType = "Series Premiere"
+)
+
 // A Program stores the information to describing a single television program.
 type Program struct {
 	ProgramID           string          `json:"programID,omitempty"`
 	AirDateTime         time.Time       `json:"airDateTime,omitempty"`
 	MD5                 string          `json:"md5,omitempty"`
 	Duration            int             `json:"duration,omitempty"`
+	LiveTapeDelay       string          `json:"liveTapeDelay,omitempty"`
+	IsPremiereOrFinale  PremiereType    `json:"isPremiereOrFinale"`
 	New                 bool            `json:"new,omitempty"`
 	CableInTheClassroom bool            `json:"cableInTheClassRoom,omitempty"`
 	Catchup             bool            `json:"catchup,omitempty"`   // - typically only found outside of North America
@@ -299,7 +317,7 @@ type ProgramInfo struct {
 	ContentRating     []ContentRating          `json:"contentRating"`
 	Crew              []Person                 `json:"crew"`
 	Descriptions      map[string][]Description `json:"descriptions"`
-	Duration          int64                    `json:"duration"`
+	Duration          int                      `json:"duration"`
 	EntityType        string                   `json:"entityType"`
 	EpisodeTitle150   string                   `json:"episodeTitle150"`
 	EventDetails      EventDetails             `json:"eventDetails"`
@@ -326,6 +344,21 @@ type ProgramInfo struct {
 // HasArtwork returns true if the Program has artwork available.
 func (p *ProgramInfo) HasArtwork() bool {
 	return p.HasEpisodeArtwork || p.HasImageArtwork || p.HasMovieArtwork || p.HasSeriesArtwork || p.HasSportsArtwork
+}
+
+// GetOrderedDescriptions returns a slice of Description ordered by description length.
+func (p *ProgramInfo) GetOrderedDescriptions() []Description {
+	sortedDescs := make([]Description, 0)
+
+	for _, descriptions := range p.Descriptions {
+		sortedDescs = append(sortedDescs, descriptions...)
+	}
+
+	sort.Slice(sortedDescs, func(i, j int) bool {
+		return len(sortedDescs[i].Description) > len(sortedDescs[j].Description)
+	})
+
+	return sortedDescs
 }
 
 // Award is a award given to a program.
@@ -358,26 +391,25 @@ type ContentRating struct {
 
 // Description provides a generic description of a program.
 type Description struct {
-	Code            int    `json:"code"`
-	Description100  string `json:"description100"`
-	Description1000 string `json:"description1000"`
+	Description string `json:"description"`
+	Language    string `json:"descriptionLanguage"`
 }
 
 // A Movie type stores information about a movie
 type Movie struct {
-	Duration      int64                `json:"duration"`
+	Duration      int                  `json:"duration"`
 	QualityRating []MovieQualityRating `json:"qualityRating"`
 	Year          string               `json:"year"`
 }
 
 // Metadata stores meta information for a program.
 type Metadata struct {
-	Episode       int64 `json:"episode"`
-	EpisodeID     int64 `json:"episodeID"`
-	Season        int64 `json:"season"`
-	SeriesID      int64 `json:"seriesID"`
-	TotalEpisodes int64 `json:"totalEpisodes"`
-	TotalSeasons  int64 `json:"totalSeasons"`
+	Episode       int `json:"episode"`
+	EpisodeID     int `json:"episodeID"`
+	Season        int `json:"season"`
+	SeriesID      int `json:"seriesID"`
+	TotalEpisodes int `json:"totalEpisodes"`
+	TotalSeasons  int `json:"totalSeasons"`
 }
 
 // EventDetails contains details about the sporting program related to a game.
@@ -487,34 +519,25 @@ type ProgramArtwork struct {
 
 // ProgramArtworkResponse is a container struct for artwork relating to a program.
 type ProgramArtworkResponse struct {
-	ProgramID string          `json:"programID"`
-	Data      json.RawMessage `json:"data"`
-	Error     *BaseResponse
-	Artwork   *[]ProgramArtwork
+	ProgramID string            `json:"programID"`
+	Error     *BaseResponse     `json:"-"`
+	Artwork   *[]ProgramArtwork `json:"-"`
+	wrapper   struct {
+		PID  string          `json:"programID"`
+		Data json.RawMessage `json:"data"`
+	}
 }
 
 // UnmarshalJSON unmarshals the JSON into the ProgramArtworkResponse.
 func (ar *ProgramArtworkResponse) UnmarshalJSON(b []byte) error {
-	switch b[0] {
-	case '[':
-		artworks := make([]ProgramArtwork, 0)
-		if err := json.Unmarshal(b, &artworks); err != nil {
-			return err
-		}
-		ar.Artwork = &artworks
-
-	case '{':
-		baseResp := &BaseResponse{}
-		if err := json.Unmarshal(b, &baseResp); err != nil {
-			return err
-		}
-		ar.Error = baseResp
-
-	default:
-		return errors.New("unexpected char or whatever")
+	if err := json.Unmarshal(b, &ar.wrapper); err != nil {
+		return err
 	}
-
-	return nil
+	ar.ProgramID = ar.wrapper.PID
+	if ar.wrapper.Data[0] == '[' {
+		return json.Unmarshal(ar.wrapper.Data, &ar.Artwork)
+	}
+	return json.Unmarshal(ar.wrapper.Data, &ar.Error)
 }
 
 // Client type
@@ -618,7 +641,7 @@ func (c *Client) GetStatus() (*StatusResponse, error) {
 
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
 func (c *Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, fmt.Sprintf("/lineups/%s", lineupURI))
 
 	req, httpErr := http.NewRequest("PUT", url, nil)
 	if httpErr != nil {
@@ -724,12 +747,16 @@ func (c *Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) 
 }
 
 // GetChannels returns the channels in a given lineup
-func (c *Client) GetChannels(lineupURI string) (*ChannelResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
+func (c *Client) GetChannels(lineupURI string, verbose bool) (*ChannelResponse, error) {
+	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/lineups/", lineupURI)
 
 	req, httpErr := http.NewRequest("GET", url, nil)
 	if httpErr != nil {
 		return nil, httpErr
+	}
+
+	if verbose {
+		req.Header.Add("verboseMap", "true")
 	}
 
 	_, data, err := c.sendRequest(req)
@@ -774,6 +801,7 @@ func (c *Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	if len(programIDs) > 5000 {
 		return nil, errors.New("you may only request at most 5000 program IDs per request, please lower your request amount")
 	}
+
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/programs")
 
 	js, jsErr := json.Marshal(programIDs)
@@ -958,6 +986,15 @@ func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkR
 	if len(programIDs) > 500 {
 		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
 	}
+
+	// Artwork endpoint only wants the leftmost 10 characters of the programID.
+	// In case users pass the full 14 character string, let's help them out.
+	for idx, programID := range programIDs {
+		if len(programID) > 10 {
+			programIDs[idx] = programID[:10]
+		}
+	}
+
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/programs")
 
 	js, jsErr := json.Marshal(programIDs)
@@ -1076,10 +1113,6 @@ func (c *Client) sendRequest(request *http.Request) (*http.Response, []byte, err
 		return nil, nil, fmt.Errorf("cannot reach server. %v", httpErr)
 	}
 
-	if response.StatusCode > 399 {
-		return nil, nil, fmt.Errorf("status code was %d, expected 2XX-3XX", response.StatusCode)
-	}
-
 	// This is only for getting programs.
 	//
 	// From the docs:
@@ -1104,6 +1137,10 @@ func (c *Client) sendRequest(request *http.Request) (*http.Response, []byte, err
 
 	if closeErr := response.Body.Close(); closeErr != nil {
 		return nil, nil, fmt.Errorf("cannot read response. %v", closeErr)
+	}
+
+	if response.StatusCode > 399 {
+		return nil, nil, fmt.Errorf("status code was %d, expected 2XX-3XX. received content: %s", response.StatusCode, buf.String())
 	}
 
 	baseResp := &BaseResponse{}
