@@ -8,42 +8,12 @@ import (
 	"crypto/sha1" // #nosec
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
-	"time"
 )
-
-//The proper SchedulesDirect JSON Service workflow is as follows...
-//------Once the client is in a steady state:-------
-//-Obtain a token
-//-Obtain the current status.
-//-If the system status is "OFFLINE" then disconnect; all further processing
-//   will be rejected at the server. A client should not attempt to reconnect
-//   for 1 hour.
-//-Check the status object and determine if any headends on the server have
-//   newer "modified" dates than the one that is on the client. If yes, download
-//   the updated lineup for that headend.
-//-If there are no changes to the headends, send a request to the server for
-//   the MD5 hashes of the schedules that you are interested in. If the MD5
-//   hash for the schedule is the same as you have locally cached from your
-//   last download, then the schedule on the server hasn't changed and your
-//   client should disconnect.
-//-If the MD5 hash for the schedule is different, then download the schedules
-//   that have different hashes.
-//-Honor the nextScheduled time in the status object; if your client connects
-//   during server-side data processing, the nextScheduled time will be
-//   "closer", however reconnecting while server-side data is being processed
-//   will not result in newer data.
-//-Parse the schedule, determine if the MD5 of the program for a particular
-//   timeslot has changed. If the program ID for a timeslot is the same, but
-//   the MD5 has changed, this means that some sort of metadata for that
-//   program has been updated.
-//-Request the "delta" program id's as determined through the MD5 values.
 
 // Some constants for use in the library
 var (
@@ -52,507 +22,19 @@ var (
 	UserAgent      = "go.schedulesdirect (Go-http-client/1.1)"
 )
 
-// Date is a Schedules Direct specific date format (YYYY-MM-DD) with (Un)MarshalJSON functions.
-type Date time.Time
-
-// MarshalJSON formats the underlying time.Time to Schedule Direct's format.
-func (p Date) MarshalJSON() ([]byte, error) {
-	t := time.Time(p)
-	str := "\"" + t.Format("2006-01-02") + "\""
-
-	return []byte(str), nil
-}
-
-// UnmarshalJSON converts Schedule Direct's format to a time.Time.
-func (p *Date) UnmarshalJSON(text []byte) (err error) {
-	strDate := string(text[1:11])
-
-	v, e := time.Parse("2006-01-02", strDate)
-	if e != nil {
-		return fmt.Errorf("schedulesdirect.Date should be a time, error value is: %s", strDate)
-	}
-	*p = Date(v)
-	return nil
-}
-
-// BaseResponse contains the fields that every request is expected to return.
-type BaseResponse struct {
-	Response string    `json:"response"`
-	Code     int       `json:"code"`
-	ServerID string    `json:"serverID"`
-	Message  string    `json:"message"`
-	DateTime time.Time `json:"datetime"`
-}
-
-// Error returns a error string.
-func (e *BaseResponse) Error() string {
-	msg := e.Message
-	if msg == "" {
-		msg = e.Response
-	}
-	return fmt.Sprintf("received error code %d, message %s from Schedules-Direct", e.Code, msg)
-}
-
-// A TokenResponse stores the SD json response message for token request.
-type TokenResponse struct {
-	BaseResponse BaseResponse
-
-	Token string `json:"token"`
-}
-
-// A VersionResponse stores the SD json response message for a version request.
-type VersionResponse struct {
-	BaseResponse BaseResponse
-
-	Version string `json:"version,omitempty"`
-}
-
-// A ChangeLineupResponse stores the SD json message returned after attempting
-// to add or delete a lineup.
-type ChangeLineupResponse struct {
-	BaseResponse BaseResponse
-
-	ChangesRemaining int `json:"changesRemaining"`
-}
-
-// A LineupResponse stores the SD json message returned after requesting
-// to list subscribed lineups.
-type LineupResponse struct {
-	BaseResponse BaseResponse
-
-	Lineups []Lineup `json:"lineups"`
-}
-
-// A StatusResponse stores the SD json message returned after requesting system
-// status.  SystemStatus[0].Status should be "Online" before proceeding.
-type StatusResponse struct {
-	Account        AccountInfo `json:"account"`
-	Lineups        []Lineup    `json:"lineups"`
-	LastDataUpdate time.Time   `json:"lastDataUpdate"`
-	Notifications  []string    `json:"notifications"`
-	SystemStatus   []Status    `json:"systemStatus"`
-}
-
-// A StatusError struct stores the error response to a status request.
-type StatusError struct {
-	BaseResponse BaseResponse
-
-	Token string `json:"token"`
-}
-
-// A Status stores the SD json message containing system status information
-// usually as part of a StatusResponse.
-type Status struct {
-	Date    time.Time `json:"date"`
-	Status  string    `json:"status"`
-	Details string    `json:"details"`
-}
-
-// An AccountInfo stores the SD json message containing account information
-// usually as part of a StatusResponse.
-type AccountInfo struct {
-	Expires                  string   `json:"expires"`
-	Messages                 []string `json:"messages"`
-	MaxLineups               int      `json:"maxLineups"`
-	NextSuggestedConnectTime string   `json:"nextSuggestedConnectTime"`
-}
-
-// A Headend stores the SD json message containing information for a headend.
-type Headend struct {
-	Headend   string   `json:"headend"`
-	Transport string   `json:"transport"`
-	Location  string   `json:"location"`
-	Lineups   []Lineup `json:"lineups"`
-}
-
-// A Lineup stores the SD json message containing lineup information.
-type Lineup struct {
-	Lineup    string `json:"lineup,omitempty"`
-	Name      string `json:"name,omitempty"`
-	ID        string `json:"ID,omitempty"`
-	Modified  string `json:"modified,omitempty"`
-	URI       string `json:"uri"`
-	IsDeleted bool   `json:"isDeleted,omitempty"`
-}
-
-// A BroadcasterInfo stores the information about a broadcaster.
-type BroadcasterInfo struct {
-	City       string `json:"city"`
-	State      string `json:"state"`
-	Postalcode string `json:"postalcode"`
-	Country    string `json:"country"`
-}
-
-// A ChannelResponse stores the channel response for a lineup
-type ChannelResponse struct {
-	Map      []ChannelMap        `json:"map"`
-	Stations []Station           `json:"stations"`
-	Metadata ChannelResponseMeta `json:"metadata"`
-}
-
-// A ChannelResponseMeta stores the metadata field associated with a channel response
-type ChannelResponseMeta struct {
-	Lineup     string    `json:"lineup"`
-	Modified   time.Time `json:"modified"`
-	Transport  string    `json:"transport"`
-	Modulation string    `json:"modulation"`
-}
-
-// A Station stores the SD json that describes a station.
-type Station struct {
-	Affiliate           string          `json:"affiliate"`
-	Broadcaster         BroadcasterInfo `json:"broadcaster"`
-	BroadcastLanguage   []string        `json:"broadcastLanguage"`
-	CallSign            string          `json:"callsign"`
-	DescriptionLanguage []string        `json:"descriptionLanguage"`
-	IsCommercialFree    bool            `json:"isCommercialFree"`
-	Logo                StationLogo     `json:"logo"`
-	Logos               []StationLogo   `json:"stationLogo"`
-	Name                string          `json:"name"`
-	StationID           string          `json:"stationID"`
-	IsRadioStation      bool            `json:"isRadioStation"`
-}
-
-// A StationLogo stores the information to locate a station logo
-type StationLogo struct {
-	URL    string `json:"URL"`
-	Height int    `json:"height"`
-	Width  int    `json:"width"`
-	MD5    string `json:"md5"`
-	Source string `json:"source"`
-}
-
-// A ChannelMap stores the station id to channel mapping
-type ChannelMap struct {
-	Channel              string `json:"channel,omitempty"`
-	ChannelMajor         int    `json:"channelMajor,omitempty"`
-	ChannelMinor         int    `json:"channelMinor,omitempty"`
-	DeliverySystem       string `json:"deliverySystem,omitempty"`
-	FED                  string `json:"fec,omitempty"`
-	FrequencyHertz       int    `json:"frequencyHz,omitempty"`
-	LogicalChannelNumber string `json:"logicalChannelNumber,omitempty"`
-	MatchType            string `json:"matchType,omitempty"`
-	ModulationSystem     string `json:"modulationSystem,omitempty"`
-	NetworkID            int    `json:"networkID,omitempty"`
-	Polarization         string `json:"polarization,omitempty"`
-	ProviderCallSign     string `json:"providerCallsign,omitempty"`
-	ServiceID            int    `json:"serviceID,omitempty"`
-	StationID            string `json:"stationID,omitempty"`
-	SymbolRate           int    `json:"symbolrate,omitempty"`
-	TransportID          int    `json:"transportID,omitempty"`
-	VirtualChannel       string `json:"virtualChannel,omitempty"`
-}
-
-// A Schedule stores the program information for a given stationID
-type Schedule struct {
-	StationID string       `json:"stationID"`
-	Metadata  ScheduleMeta `json:"metadata"`
-	Programs  []Program    `json:"programs"`
-}
-
-// A ScheduleMeta stores the metadata information for a schedule
-type ScheduleMeta struct {
-	Modified  string `json:"modified"`
-	MD5       string `json:"md5"`
-	StartDate Date   `json:"startDate"`
-	EndDate   Date   `json:"endDate"`
-	Days      int    `json:"days"`
-}
-
-// A SyndicationType stores syndication information for a program
-type SyndicationType struct {
-	Source string `json:"source"`
-	Type   string `json:"type"`
-}
-
-// PremiereType is used for enumerating the IsPremiereOrFinale field of a Program.
-type PremiereType string
-
-const (
-	Finale         PremiereType = "Finale"
-	Premiere       PremiereType = "Premiere"
-	SeasonFinale   PremiereType = "Season Finale"
-	SeasonPremiere PremiereType = "Season Premiere"
-	SeriesFinale   PremiereType = "Series Finale"
-	SeriesPremiere PremiereType = "Series Premiere"
-)
-
-// A Program stores the information to describing a single television program.
-type Program struct {
-	ProgramID           string          `json:"programID,omitempty"`
-	AirDateTime         time.Time       `json:"airDateTime,omitempty"`
-	MD5                 string          `json:"md5,omitempty"`
-	Duration            int             `json:"duration,omitempty"`
-	LiveTapeDelay       string          `json:"liveTapeDelay,omitempty"`
-	IsPremiereOrFinale  PremiereType    `json:"isPremiereOrFinale"`
-	New                 bool            `json:"new,omitempty"`
-	CableInTheClassroom bool            `json:"cableInTheClassRoom,omitempty"`
-	Catchup             bool            `json:"catchup,omitempty"`   // - typically only found outside of North America
-	Continued           bool            `json:"continued,omitempty"` // - typically only found outside of North America
-	Education           bool            `json:"educational,omitempty"`
-	JoinedInProgress    bool            `json:"joinedInProgress,omitempty"`
-	LeftInProgress      bool            `json:"leftInProgress,omitempty"`
-	Premiere            bool            `json:"premiere,omitempty"`          //- Should only be found in Miniseries and Movie program types.
-	ProgramBreak        bool            `json:"programBreak,omitempty"`      // - Program stops and will restart later (frequently followed by a continued). Typically only found outside of North America.
-	Repeat              bool            `json:"repeat,omitempty"`            // - An encore presentation. Repeat should only be found on a second telecast of sporting events.
-	Signed              bool            `json:"signed,omitempty"`            //- Program has an on-screen person providing sign-language translation.
-	SubjectToBlackout   bool            `json:"subjectToBlackout,omitempty"` //subjectToBlackout
-	TimeApproximate     bool            `json:"timeApproximate,omitempty"`
-	AudioProperties     []string        `json:"audioProperties,omitempty"`
-	Syndication         SyndicationType `json:"syndication,omitempty"`
-	Ratings             []ContentRating `json:"ratings,omitempty"`
-	ProgramPart         Part            `json:"multipart,omitempty"`
-	VideoProperties     []string        `json:"videoProperties,omitempty"`
-}
-
-// A ProgramInfo type stores information for a program.
-type ProgramInfo struct {
-	BaseResponse BaseResponse
-
-	Animation         string                   `json:"animation"`
-	Audience          string                   `json:"audience"`
-	Awards            []Award                  `json:"awards"`
-	Cast              []Person                 `json:"cast"`
-	ContentAdvisory   []string                 `json:"contentAdvisory"`
-	ContentRating     []ContentRating          `json:"contentRating"`
-	Crew              []Person                 `json:"crew"`
-	Descriptions      map[string][]Description `json:"descriptions"`
-	Duration          int                      `json:"duration"`
-	EntityType        string                   `json:"entityType"`
-	EpisodeTitle150   string                   `json:"episodeTitle150"`
-	EventDetails      EventDetails             `json:"eventDetails"`
-	Genres            []string                 `json:"genres"`
-	HasEpisodeArtwork bool                     `json:"hasEpisodeArtwork"`
-	HasImageArtwork   bool                     `json:"hasImageArtwork"`
-	HasMovieArtwork   bool                     `json:"hasMovieArtwork"`
-	HasSeriesArtwork  bool                     `json:"hasSeriesArtwork"`
-	HasSportsArtwork  bool                     `json:"hasSportsArtwork"`
-	Holiday           string                   `json:"holiday"`
-	Keywords          map[string][]string      `json:"keyWords"`
-	MD5               string                   `json:"md5"`
-	Metadata          []map[string]Metadata    `json:"metadata"`
-	Movie             Movie                    `json:"movie"`
-	OfficialURL       string                   `json:"officialURL"`
-	OriginalAirDate   Date                     `json:"originalAirDate"`
-	ProgramID         string                   `json:"programID"`
-	Recommendations   []Recommendation         `json:"recommendations"`
-	ResourceID        string                   `json:"resourceID"`
-	ShowType          string                   `json:"showType"`
-	Titles            []Title                  `json:"titles"`
-}
-
-// HasArtwork returns true if the Program has artwork available.
-func (p *ProgramInfo) HasArtwork() bool {
-	return p.HasEpisodeArtwork || p.HasImageArtwork || p.HasMovieArtwork || p.HasSeriesArtwork || p.HasSportsArtwork
-}
-
-// GetOrderedDescriptions returns a slice of Description ordered by description length.
-func (p *ProgramInfo) GetOrderedDescriptions() []Description {
-	sortedDescs := make([]Description, 0)
-
-	for _, descriptions := range p.Descriptions {
-		sortedDescs = append(sortedDescs, descriptions...)
-	}
-
-	sort.Slice(sortedDescs, func(i, j int) bool {
-		return len(sortedDescs[i].Description) > len(sortedDescs[j].Description)
-	})
-
-	return sortedDescs
-}
-
-// Award is a award given to a program.
-type Award struct {
-	AwardName string `json:"awardName"`
-	Category  string `json:"category"`
-	Name      string `json:"name"`
-	PersonID  string `json:"personId"`
-	Recipient string `json:"recipient"`
-	Won       bool   `json:"won"`
-	Year      string `json:"year"`
-}
-
-// Person stores information for an acting credit or crew member.
-type Person struct {
-	PersonID      string `json:"personId,omitmepty"`
-	NameID        string `json:"nameId,omitempty"`
-	Name          string `json:"name,omitempty"`
-	Role          string `json:"role,omitempty"`
-	CharacterName string `json:"characterName,omitempty"`
-	BillingOrder  string `json:"billingOrder,omitempty"`
-}
-
-// A ContentRating stores ratings board information for a program
-type ContentRating struct {
-	Body    string `json:"body"`
-	Code    string `json:"code"`
-	Country string `json:"country"`
-}
-
-// Description provides a generic description of a program.
-type Description struct {
-	Description string `json:"description"`
-	Language    string `json:"descriptionLanguage"`
-}
-
-// A Movie type stores information about a movie
-type Movie struct {
-	Duration      int                  `json:"duration"`
-	QualityRating []MovieQualityRating `json:"qualityRating"`
-	Year          string               `json:"year"`
-}
-
-// Metadata stores meta information for a program.
-type Metadata struct {
-	Episode       int `json:"episode"`
-	EpisodeID     int `json:"episodeID"`
-	Season        int `json:"season"`
-	SeriesID      int `json:"seriesID"`
-	TotalEpisodes int `json:"totalEpisodes"`
-	TotalSeasons  int `json:"totalSeasons"`
-}
-
-// EventDetails contains details about the sporting program related to a game.
-type EventDetails struct {
-	GameDate Date   `json:"gameDate"`
-	Teams    []Team `json:"teams"`
-	Venue    string `json:"venue100"`
-}
-
-// A MovieQualityRating describes ratings for the quality of a movie.
-type MovieQualityRating struct {
-	Increment   string `json:"increment"`
-	MaxRating   string `json:"maxRating"`
-	MinRating   string `json:"minRating"`
-	Rating      string `json:"rating"`
-	RatingsBody string `json:"ratingsBody"`
-}
-
-// Team is a sports team that participated in a game program.
-type Team struct {
-	IsHome bool   `json:"isHome"`
-	Name   string `json:"name"`
-}
-
-// Recommendation is a related content recommendation.
-type Recommendation struct {
-	ProgramID string `json:"programID"`
-	Title120  string `json:"title120"`
-}
-
-// Title contains the title of a program.
-type Title struct {
-	Title120 string `json:"title120"`
-}
-
-// Part stores the information for a part
-type Part struct {
-	PartNumber int `json:"partNumber"`
-	TotalParts int `json:"totalParts"`
-}
-
-// StationScheduleRequest is the payload used to get schedule information for a station as well as last modified information.
-type StationScheduleRequest struct {
-	StationID string   `json:"stationID"`
-	Dates     []string `json:"dates,omitempty"`
-}
-
-// LastModifiedEntry contains information about the last modification of a station schedule.
-type LastModifiedEntry struct {
-	Code         int       `json:"code"`
-	LastModified time.Time `json:"lastModified"`
-	MD5          string    `json:"md5"`
-	Message      string    `json:"message"`
-}
-
-// ProgramDescription provides a generic description of a program.
-type ProgramDescription struct {
-	Code            int    `json:"code"`
-	Description100  string `json:"description100"`
-	Description1000 string `json:"description1000"`
-}
-
-// LanguageCrossReference provides translated titles and descriptions for a program.
-type LanguageCrossReference struct {
-	BaseResponse BaseResponse
-
-	DescriptionLanguage     string `json:"descriptionLanguage"`
-	DescriptionLanguageName string `json:"descriptionLanguageName"`
-	MD5                     string `json:"md5"`
-	ProgramID               string `json:"programID"`
-	TitleLanguage           string `json:"titleLanguage"`
-	TitleLanguageName       string `json:"titleLanguageName"`
-}
-
-// A StillRunningResponse describes the current real time state of a program.
-type StillRunningResponse struct {
-	BaseResponse BaseResponse
-
-	EventStartDateTime string `json:"eventStartDateTime"`
-	IsComplete         bool   `json:"isComplete"`
-	ProgramID          string `json:"programID"`
-	Result             struct {
-		AwayTeam struct {
-			Name  string `json:"name"`
-			Score string `json:"score"`
-		} `json:"awayTeam"`
-		HomeTeam struct {
-			Name  string `json:"name"`
-			Score string `json:"score"`
-		} `json:"homeTeam"`
-	} `json:"result"`
-}
-
-// ProgramArtwork describes a single piece of artwork related to a program.
-type ProgramArtwork struct {
-	Aspect   string            `json:"aspect"`
-	Category string            `json:"category"`
-	Height   int               `json:"height,string"`
-	Primary  string            `json:"primary"`
-	Size     string            `json:"size"`
-	Text     string            `json:"text"`
-	Tier     string            `json:"tier"`
-	URI      string            `json:"uri"`
-	Width    int               `json:"width,string"`
-	Caption  map[string]string `json:"caption"`
-}
-
-// ProgramArtworkResponse is a container struct for artwork relating to a program.
-type ProgramArtworkResponse struct {
-	ProgramID string            `json:"programID"`
-	Error     *BaseResponse     `json:"-"`
-	Artwork   *[]ProgramArtwork `json:"-"`
-	wrapper   struct {
-		PID  string          `json:"programID"`
-		Data json.RawMessage `json:"data"`
-	}
-}
-
-// UnmarshalJSON unmarshals the JSON into the ProgramArtworkResponse.
-func (ar *ProgramArtworkResponse) UnmarshalJSON(b []byte) error {
-	if err := json.Unmarshal(b, &ar.wrapper); err != nil {
-		return err
-	}
-	ar.ProgramID = ar.wrapper.PID
-	if ar.wrapper.Data[0] == '[' {
-		return json.Unmarshal(ar.wrapper.Data, &ar.Artwork)
-	}
-	return json.Unmarshal(ar.wrapper.Data, &ar.Error)
-}
-
 // Client type
 type Client struct {
-	// The Base URL for SD requests
+	// The Base URL for Schedules Direct requests
 	BaseURL *url.URL
 
-	// Our HTTP client to communicate with SD
+	// Our HTTP client to communicate with Schedules Direct
 	HTTP *http.Client
 
 	// The token
 	Token string
 }
 
-// NewClient returns a new SD API client. Uses http.DefaultClient if no http.Client is set.
+// NewClient returns a new Schedules Direct API client. Uses http.DefaultClient if no http.Client is set.
 func NewClient(username string, password string) (*Client, error) {
 	baseURL, parseErr := url.Parse(DefaultBaseURL)
 	if parseErr != nil {
@@ -561,7 +43,7 @@ func NewClient(username string, password string) (*Client, error) {
 	c := &Client{HTTP: http.DefaultClient, BaseURL: baseURL}
 	token, tokenErr := c.GetToken(username, password)
 	if tokenErr != nil {
-		return nil, tokenErr
+		return nil, fmt.Errorf("error getting token from schedules direct: %s", tokenErr)
 	}
 	c.Token = token
 	return c, nil
@@ -599,13 +81,13 @@ func (c *Client) GetToken(username string, password string) (string, error) {
 	}
 
 	// perform the POST
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, false)
 	if err != nil {
 		return "", err
 	}
 
 	// create a TokenResponse struct, return if err
-	r := new(TokenResponse)
+	r := TokenResponse{}
 
 	// decode the response body into the new TokenResponse struct
 	err = json.Unmarshal(data, &r)
@@ -626,7 +108,7 @@ func (c *Client) GetStatus() (*StatusResponse, error) {
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +130,7 @@ func (c *Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +150,7 @@ func (c *Client) DeleteLineup(lineupURI string) (*ChangeLineupResponse, error) {
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +171,7 @@ func (c *Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -710,7 +192,7 @@ func (c *Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseResp
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -732,7 +214,7 @@ func (c *Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) 
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -759,7 +241,7 @@ func (c *Client) GetChannels(lineupURI string, verbose bool) (*ChannelResponse, 
 		req.Header.Add("verboseMap", "true")
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -785,7 +267,7 @@ func (c *Client) GetSchedules(requests []StationScheduleRequest) ([]Schedule, er
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -796,10 +278,24 @@ func (c *Client) GetSchedules(requests []StationScheduleRequest) ([]Schedule, er
 	return h, err
 }
 
-// GetProgramInfo returns the set of program details for the given set of programs
+// GetProgramInfo returns the set of program details for the given set of programs.
+//
+// If more than 5000 Program IDs are provided, the client will automatically
+// chunk the slice into groups of 5000 IDs and return all responses to you.
 func (c *Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
+	// If user passed more than 5000 programIDs, let's help them out by
+	// chunking the requests for them.
+	// Obviously you can disable this behavior by passing less than 5000 IDs.
 	if len(programIDs) > 5000 {
-		return nil, errors.New("you may only request at most 5000 program IDs per request, please lower your request amount")
+		allResponses := make([]ProgramInfo, len(programIDs))
+		for _, chunk := range chunkStringSlice(programIDs, 5000) {
+			resp, err := c.GetProgramInfo(chunk)
+			if err != nil {
+				return nil, err
+			}
+			allResponses = append(allResponses, resp...)
+		}
+		return allResponses, nil
 	}
 
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/programs")
@@ -816,7 +312,7 @@ func (c *Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 	}
 	req.Header.Set("Accept-Encoding", "deflate,gzip")
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -832,10 +328,27 @@ func (c *Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 }
 
 // GetProgramDescription returns a set of program descriptions for the given set of program IDs.
+//
+// If more than 500 Program IDs are provided, the client will automatically
+// chunk the slice into groups of 500 IDs and return all responses to you.
 func (c *Client) GetProgramDescription(programIDs []string) (map[string]ProgramDescription, error) {
+	// If user passed more than 500 programIDs, let's help them out by
+	// chunking the requests for them.
+	// Obviously you can disable this behavior by passing less than 500 IDs.
 	if len(programIDs) > 500 {
-		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
+		allResponses := make(map[string]ProgramDescription)
+		for _, chunk := range chunkStringSlice(programIDs, 500) {
+			resp, err := c.GetProgramDescription(chunk)
+			if err != nil {
+				return nil, err
+			}
+			for key, val := range resp {
+				allResponses[key] = val
+			}
+		}
+		return allResponses, nil
 	}
+
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/description")
 
 	js, jsErr := json.Marshal(programIDs)
@@ -849,7 +362,7 @@ func (c *Client) GetProgramDescription(programIDs []string) (map[string]ProgramD
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -864,11 +377,28 @@ func (c *Client) GetProgramDescription(programIDs []string) (map[string]ProgramD
 }
 
 // GetLanguageCrossReference returns a map of translated titles and descriptions for the given programIDs.
+//
+// If more than 500 Program IDs are provided, the client will automatically
+// chunk the slice into groups of 500 IDs and return all responses to you.
 func (c *Client) GetLanguageCrossReference(programIDs []string) (map[string][]LanguageCrossReference, error) {
 	// A 500 item limit is not defined in the docs but seems like the reasonable default.
+	// If user passed more than 500 programIDs, let's help them out by
+	// chunking the requests for them.
+	// Obviously you can disable this behavior by passing less than 500 IDs.
 	if len(programIDs) > 500 {
-		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
+		allResponses := make(map[string][]LanguageCrossReference)
+		for _, chunk := range chunkStringSlice(programIDs, 500) {
+			resp, err := c.GetLanguageCrossReference(chunk)
+			if err != nil {
+				return nil, err
+			}
+			for key, val := range resp {
+				allResponses[key] = val
+			}
+		}
+		return allResponses, nil
 	}
+
 	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/xref")
 
 	js, jsErr := json.Marshal(programIDs)
@@ -882,7 +412,7 @@ func (c *Client) GetLanguageCrossReference(programIDs []string) (map[string][]La
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -912,7 +442,7 @@ func (c *Client) GetLastModified(requests []StationScheduleRequest) (map[string]
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -933,7 +463,7 @@ func (c *Client) GetLineups() (*LineupResponse, error) {
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -952,7 +482,7 @@ func (c *Client) DeleteSystemMessage(messageID string) error {
 		return httpErr
 	}
 
-	_, _, err := c.sendRequest(req)
+	_, _, err := c.SendRequest(req, true)
 
 	return err
 }
@@ -967,7 +497,7 @@ func (c *Client) GetProgramStillRunning(programID string) (*StillRunningResponse
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -982,9 +512,23 @@ func (c *Client) GetProgramStillRunning(programID string) (*StillRunningResponse
 }
 
 // GetArtworkForProgramIDs returns artwork for the given programIDs.
+//
+// If more than 500 Program IDs are provided, the client will automatically
+// chunk the slice into groups of 500 IDs and return all responses to you.
 func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkResponse, error) {
+	// If user passed more than 500 programIDs, let's help them out by
+	// chunking the requests for them.
+	// Obviously you can disable this behavior by passing less than 500 IDs.
 	if len(programIDs) > 500 {
-		return nil, errors.New("you may only request at most 500 program IDs per request, please lower your request amount")
+		allResponses := make([]ProgramArtworkResponse, len(programIDs))
+		for _, chunk := range chunkStringSlice(programIDs, 500) {
+			resp, err := c.GetArtworkForProgramIDs(chunk)
+			if err != nil {
+				return nil, err
+			}
+			allResponses = append(allResponses, resp...)
+		}
+		return allResponses, nil
 	}
 
 	// Artwork endpoint only wants the leftmost 10 characters of the programID.
@@ -1008,7 +552,7 @@ func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkR
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1032,7 +576,7 @@ func (c *Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1060,7 +604,7 @@ func (c *Client) GetImage(imageURI string) ([]byte, error) {
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1078,7 +622,7 @@ func (c *Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, erro
 		return nil, httpErr
 	}
 
-	_, data, err := c.sendRequest(req)
+	_, data, err := c.SendRequest(req, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1100,9 +644,16 @@ func (c *Client) GetImageURL(imageURI string) string {
 	return fmt.Sprint(DefaultBaseURL, APIVersion, "/image/", imageURI)
 }
 
-func (c *Client) sendRequest(request *http.Request) (*http.Response, []byte, error) {
+// SendRequest will send the given http.Request to Schedules Direct.
+// Specify if the request requires a token via the needsToken boolean.
+func (c *Client) SendRequest(request *http.Request, needsToken bool) (*http.Response, []byte, error) {
+	if !needsToken && (c == nil || c.Token == "") {
+		return nil, nil, fmt.Errorf("schedules direct client has not been initialized with a token, stubbornly refusing to make a request")
+	}
 	request.Header.Set("User-Agent", UserAgent)
-	request.Header.Set("token", c.Token)
+	if needsToken {
+		request.Header.Set("token", c.Token)
+	}
 
 	if request.Method == "POST" {
 		request.Header.Set("Content-Type", "application/json")
@@ -1110,7 +661,7 @@ func (c *Client) sendRequest(request *http.Request) (*http.Response, []byte, err
 
 	response, httpErr := c.HTTP.Do(request)
 	if httpErr != nil {
-		return nil, nil, fmt.Errorf("cannot reach server. %v", httpErr)
+		return nil, nil, fmt.Errorf("cannot reach server schedules direct service: %s", httpErr)
 	}
 
 	// This is only for getting programs.
@@ -1132,23 +683,39 @@ func (c *Client) sendRequest(request *http.Request) (*http.Response, []byte, err
 
 	buf := &bytes.Buffer{}
 	if _, copyErr := io.Copy(buf, reader); copyErr != nil {
-		return nil, nil, copyErr
+		return nil, nil, fmt.Errorf("error when copying bytes of response to buffer: %s", copyErr)
 	}
 
 	if closeErr := response.Body.Close(); closeErr != nil {
 		return nil, nil, fmt.Errorf("cannot read response. %v", closeErr)
 	}
 
-	if response.StatusCode > 399 {
-		return nil, nil, fmt.Errorf("status code was %d, expected 2XX-3XX. received content: %s", response.StatusCode, buf.String())
-	}
-
 	baseResp := &BaseResponse{}
 	if unmarshalErr := json.Unmarshal(buf.Bytes(), baseResp); unmarshalErr == nil {
-		if ((baseResp.Response != "OK" && baseResp.Response != "") || (baseResp.Message != "OK" && baseResp.Message != "")) && baseResp.Code != 0 {
+		if baseResp.Code != 0 {
 			return nil, nil, baseResp
 		}
 	}
 
+	if response.StatusCode > 399 {
+		return nil, nil, fmt.Errorf("status code was %d, expected 2XX-3XX. received content: %s", response.StatusCode, buf.String())
+	}
+
 	return response, buf.Bytes(), nil
+}
+
+// chunkStringSlice will return a slice of slice of strings for the given chunkSize.
+func chunkStringSlice(sl []string, chunkSize int) [][]string {
+	var divided [][]string
+
+	for i := 0; i < len(sl); i += chunkSize {
+		end := i + chunkSize
+
+		if end > len(sl) {
+			end = len(sl)
+		}
+
+		divided = append(divided, sl[i:end])
+	}
+	return divided
 }
