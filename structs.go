@@ -51,7 +51,7 @@ func (e *BaseResponse) Error() string {
 	if msg == "" {
 		msg = e.Response
 	}
-	return fmt.Sprintf("received error code %d, message %s from Schedules-Direct", e.Code, msg)
+	return fmt.Sprintf("%s (%d)", msg, e.Code)
 }
 
 // A TokenResponse stores the response for token request.
@@ -113,10 +113,9 @@ type Status struct {
 // An AccountInfo stores the message account information
 // usually as part of a StatusResponse.
 type AccountInfo struct {
-	Expires                  string    `json:"expires"`
-	Messages                 []string  `json:"messages"`
-	MaxLineups               int       `json:"maxLineups"`
-	NextSuggestedConnectTime time.Time `json:"nextSuggestedConnectTime"`
+	Expires    string   `json:"expires"`
+	Messages   []string `json:"messages"`
+	MaxLineups int      `json:"maxLineups"`
 }
 
 // A Headend stores the message information for a headend.

@@ -647,7 +647,8 @@ func (c *Client) GetImageURL(imageURI string) string {
 // SendRequest will send the given http.Request to Schedules Direct.
 // Specify if the request requires a token via the needsToken boolean.
 func (c *Client) SendRequest(request *http.Request, needsToken bool) (*http.Response, []byte, error) {
-	if !needsToken && (c == nil || c.Token == "") {
+	if needsToken && (c == nil || c.Token == "") {
+		fmt.Println("REJECT", request.URL.String())
 		return nil, nil, fmt.Errorf("schedules direct client has not been initialized with a token, stubbornly refusing to make a request")
 	}
 	request.Header.Set("User-Agent", UserAgent)

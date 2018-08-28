@@ -2,7 +2,6 @@ package schedulesdirect
 
 import (
 	"encoding/json"
-	"sort"
 	"time"
 )
 
@@ -109,21 +108,6 @@ type ProgramInfo struct {
 // HasArtwork returns true if the Program has artwork available.
 func (p *ProgramInfo) HasArtwork() bool {
 	return p.HasEpisodeArtwork || p.HasImageArtwork || p.HasMovieArtwork || p.HasSeriesArtwork || p.HasSportsArtwork
-}
-
-// GetOrderedDescriptions returns a slice of Description ordered by description length.
-func (p *ProgramInfo) GetOrderedDescriptions() []Description {
-	sortedDescs := make([]Description, 0)
-
-	for _, descriptions := range p.Descriptions {
-		sortedDescs = append(sortedDescs, descriptions...)
-	}
-
-	sort.Slice(sortedDescs, func(i, j int) bool {
-		return len(sortedDescs[i].Description) > len(sortedDescs[j].Description)
-	})
-
-	return sortedDescs
 }
 
 // Award is a award given to a program.
