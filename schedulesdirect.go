@@ -1,5 +1,6 @@
 // Package schedulesdirect provides structs and functions to interact with
-// the SchedulesDirect JSON listings service in Go.
+// the SchedulesDirect JSON listings service in Go. It is only compatible with
+// API version 20141201.
 package schedulesdirect
 
 import (
@@ -16,31 +17,34 @@ import (
 )
 
 // Some constants for use in the library
-var (
-	APIVersion     = "20141201"
-	DefaultBaseURL = "https://json.schedulesdirect.org/"
-	UserAgent      = "go.schedulesdirect (Go-http-client/1.1)"
+const (
+	APIVersion       = "20141201"
+	DefaultBaseURL   = "https://json.schedulesdirect.org/"
+	DefaultUserAgent = "go.schedulesdirect (Go-http-client/1.1)"
 )
 
 // Client type
 type Client struct {
 	// The Base URL for Schedules Direct requests
-	BaseURL *url.URL
+	BaseURL string
 
 	// Our HTTP client to communicate with Schedules Direct
 	HTTP *http.Client
 
 	// The token
 	Token string
+
+	// The User-Agent to send on every request.
+	UserAgent string
 }
 
 // NewClient returns a new Schedules Direct API client. Uses http.DefaultClient if no http.Client is set.
 func NewClient(username string, password string) (*Client, error) {
-	baseURL, parseErr := url.Parse(DefaultBaseURL)
-	if parseErr != nil {
-		return nil, parseErr
+	c := &Client{
+		BaseURL:   DefaultBaseURL,
+		HTTP:      http.DefaultClient,
+		UserAgent: DefaultUserAgent,
 	}
-	c := &Client{HTTP: http.DefaultClient, BaseURL: baseURL}
 	token, tokenErr := c.GetToken(username, password)
 	if tokenErr != nil {
 		return nil, fmt.Errorf("error getting token from schedules direct: %s", tokenErr)
@@ -61,7 +65,7 @@ func encryptPassword(password string) (string, error) {
 // GetToken returns a session token if the supplied username/password
 // successfully authenticate.
 func (c *Client) GetToken(username string, password string) (string, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/token")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/token")
 
 	// encrypt the password
 	sha1hexPW, encryptError := encryptPassword(password)
@@ -101,7 +105,7 @@ func (c *Client) GetToken(username string, password string) (string, error) {
 
 // GetStatus returns a StatusResponse for this account.
 func (c *Client) GetStatus() (*StatusResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/status")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/status")
 
 	req, httpErr := http.NewRequest("GET", url, nil)
 	if httpErr != nil {
@@ -122,8 +126,8 @@ func (c *Client) GetStatus() (*StatusResponse, error) {
 }
 
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
-func (c *Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, fmt.Sprintf("/lineups/%s", lineupURI))
+func (c *Client) AddLineup(lineupID string) (*ChangeLineupResponse, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/lineups/", lineupID)
 
 	req, httpErr := http.NewRequest("PUT", url, nil)
 	if httpErr != nil {
@@ -142,8 +146,8 @@ func (c *Client) AddLineup(lineupURI string) (*ChangeLineupResponse, error) {
 }
 
 // DeleteLineup deletes the given lineup uri from the users SchedulesDirect account.
-func (c *Client) DeleteLineup(lineupURI string) (*ChangeLineupResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, lineupURI)
+func (c *Client) DeleteLineup(lineupID string) (*ChangeLineupResponse, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/lineups/", lineupID)
 
 	req, httpErr := http.NewRequest("DELETE", url, nil)
 	if httpErr != nil {
@@ -164,7 +168,7 @@ func (c *Client) DeleteLineup(lineupURI string) (*ChangeLineupResponse, error) {
 // AutomapLineup accepts the "lineup.json" output as a byte slice from SiliconDust's HDHomerun devices.
 // It then runs a comparison against ScheduleDirect's database and returns potential lineup matches.
 func (c *Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/map/lineup")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/map/lineup")
 
 	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(hdhrLineupJSON))
 	if httpErr != nil {
@@ -185,7 +189,7 @@ func (c *Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
 // SubmitLineup should be called if AutomapLineup doesn't return candidates after you identify
 // the lineup you were trying to find via automapping.
 func (c *Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/map/lineup/", lineupID)
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/map/lineup/", lineupID)
 
 	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(hdhrLineupJSON))
 	if httpErr != nil {
@@ -206,8 +210,11 @@ func (c *Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseResp
 
 // GetHeadends returns the map of headends for the given country and postal code.
 func (c *Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) {
-	uriPart := fmt.Sprintf("/headends?country=%s&postalcode=%s", countryCode, postalCode)
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, uriPart)
+	params := url.Values{}
+	params.Add("country", countryCode)
+	params.Add("postalcode", postalCode)
+	uriPart := fmt.Sprint("/headends?", params.Encode())
+	url := fmt.Sprint(c.BaseURL, APIVersion, uriPart)
 
 	req, httpErr := http.NewRequest("GET", url, nil)
 	if httpErr != nil {
@@ -229,8 +236,8 @@ func (c *Client) GetHeadends(countryCode, postalCode string) ([]Headend, error) 
 }
 
 // GetChannels returns the channels in a given lineup
-func (c *Client) GetChannels(lineupURI string, verbose bool) (*ChannelResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/lineups/", lineupURI)
+func (c *Client) GetChannels(lineupID string, verbose bool) (*ChannelResponse, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/lineups/", lineupID)
 
 	req, httpErr := http.NewRequest("GET", url, nil)
 	if httpErr != nil {
@@ -254,7 +261,7 @@ func (c *Client) GetChannels(lineupURI string, verbose bool) (*ChannelResponse, 
 
 // GetSchedules returns the set of schedules requested.  As a whole the response is not valid json but each individual line is valid.
 func (c *Client) GetSchedules(requests []StationScheduleRequest) ([]Schedule, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/schedules")
 
 	js, jsErr := json.Marshal(requests)
 	if jsErr != nil {
@@ -298,7 +305,7 @@ func (c *Client) GetProgramInfo(programIDs []string) ([]ProgramInfo, error) {
 		return allResponses, nil
 	}
 
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/programs")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/programs")
 
 	js, jsErr := json.Marshal(programIDs)
 	if jsErr != nil {
@@ -349,7 +356,7 @@ func (c *Client) GetProgramDescription(programIDs []string) (map[string]ProgramD
 		return allResponses, nil
 	}
 
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/description")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/description")
 
 	js, jsErr := json.Marshal(programIDs)
 	if jsErr != nil {
@@ -399,7 +406,7 @@ func (c *Client) GetLanguageCrossReference(programIDs []string) (map[string][]La
 		return allResponses, nil
 	}
 
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/xref")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/xref")
 
 	js, jsErr := json.Marshal(programIDs)
 	if jsErr != nil {
@@ -428,7 +435,7 @@ func (c *Client) GetLanguageCrossReference(programIDs []string) (map[string][]La
 
 // GetLastModified returns the last modified information for the given station IDs and optional dates.
 func (c *Client) GetLastModified(requests []StationScheduleRequest) (map[string]map[string]LastModifiedEntry, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/schedules/md5")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/schedules/md5")
 
 	s := make(map[string]map[string]LastModifiedEntry)
 
@@ -455,7 +462,7 @@ func (c *Client) GetLastModified(requests []StationScheduleRequest) (map[string]
 // GetLineups returns a LineupResponse which contains all the lineups subscribed
 // to by this account.
 func (c *Client) GetLineups() (*LineupResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/lineups")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/lineups")
 	s := new(LineupResponse)
 
 	req, httpErr := http.NewRequest("GET", url, nil)
@@ -475,7 +482,7 @@ func (c *Client) GetLineups() (*LineupResponse, error) {
 
 // DeleteSystemMessage deletes a system message from the status response.
 func (c *Client) DeleteSystemMessage(messageID string) error {
-	url := fmt.Sprint(DefaultBaseURL, "/messages/", messageID)
+	url := fmt.Sprint(c.BaseURL, "/messages/", messageID)
 
 	req, httpErr := http.NewRequest("DELETE", url, nil)
 	if httpErr != nil {
@@ -489,7 +496,7 @@ func (c *Client) DeleteSystemMessage(messageID string) error {
 
 // GetProgramStillRunning returns the real time status of the given program ID.
 func (c *Client) GetProgramStillRunning(programID string) (*StillRunningResponse, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/stillRunning/", programID)
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/stillRunning/", programID)
 
 	// setup the request
 	req, httpErr := http.NewRequest("GET", url, nil)
@@ -539,7 +546,7 @@ func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkR
 		}
 	}
 
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/programs")
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/programs")
 
 	js, jsErr := json.Marshal(programIDs)
 	if jsErr != nil {
@@ -568,7 +575,7 @@ func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkR
 
 // GetArtworkForRootID returns artwork for the given programIDs.
 func (c *Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/programs/", rootID)
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/programs/", rootID)
 
 	// setup the request
 	req, httpErr := http.NewRequest("GET", url, nil)
@@ -592,7 +599,7 @@ func (c *Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
 
 // GetImage returns an image for the given URI.
 func (c *Client) GetImage(imageURI string) ([]byte, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/image/", imageURI)
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/image/", imageURI)
 
 	if strings.HasPrefix(imageURI, "https://s3.amazonaws.com") {
 		url = imageURI
@@ -614,7 +621,7 @@ func (c *Client) GetImage(imageURI string) ([]byte, error) {
 
 // GetCelebrityArtwork returns artwork for the given programIDs.
 func (c *Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, error) {
-	url := fmt.Sprint(DefaultBaseURL, APIVersion, "/metadata/celebrity/", celebrityID)
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/celebrity/", celebrityID)
 
 	// setup the request
 	req, httpErr := http.NewRequest("GET", url, nil)
@@ -641,17 +648,17 @@ func (c *Client) GetImageURL(imageURI string) string {
 	if strings.HasPrefix(imageURI, "https://s3.amazonaws.com") {
 		return imageURI
 	}
-	return fmt.Sprint(DefaultBaseURL, APIVersion, "/image/", imageURI)
+	return fmt.Sprint(c.BaseURL, APIVersion, "/image/", imageURI)
 }
 
 // SendRequest will send the given http.Request to Schedules Direct.
 // Specify if the request requires a token via the needsToken boolean.
 func (c *Client) SendRequest(request *http.Request, needsToken bool) (*http.Response, []byte, error) {
 	if needsToken && (c == nil || c.Token == "") {
-		fmt.Println("REJECT", request.URL.String())
 		return nil, nil, fmt.Errorf("schedules direct client has not been initialized with a token, stubbornly refusing to make a request")
 	}
-	request.Header.Set("User-Agent", UserAgent)
+
+	request.Header.Set("User-Agent", c.UserAgent)
 	if needsToken {
 		request.Header.Set("token", c.Token)
 	}
