@@ -39,12 +39,12 @@ const (
 	// ErrRequiredParameterMissingMessageID is returned when in order to delete a message you must supply the messageID.
 	ErrRequiredParameterMissingMessageID ErrorCode = 2006
 
-	// InvalidParameterCountry is returned when the COUNTRY parameter was not a ISO-3166-1 alpha 3 code.
-	// ErrInvalidParameterCountry http://en.wikipedia.org/wiki/ISO_3166-1_alpha-3 for more information.
+	// ErrInvalidParameterCountry is returned when the COUNTRY parameter was not a ISO-3166-1 alpha 3 code.
+	// See http://en.wikipedia.org/wiki/ISO_3166-1_alpha-3 for more information.
 	ErrInvalidParameterCountry ErrorCode = 2050
 
-	// InvalidParameterPostalCode is returned when the POSTALCODE parameter must was invalid for the country searched.
-	// ErrInvalidParameterPostalCode message to http://forums.schedulesdirect.org/viewforum.php?f=6 if you are having issues.
+	// ErrInvalidParameterPostalCode is returned when the POSTALCODE parameter must was invalid for the country searched.
+	// Post message to http://forums.schedulesdirect.org/viewforum.php?f=6 if you are having issues.
 	ErrInvalidParameterPostalCode ErrorCode = 2051
 
 	// ErrInvalidParameterFetchType is returned when you didn't provide a fetchtype Schedules Direct knows how to handle.
@@ -53,12 +53,12 @@ const (
 	// ErrDuplicateLineup is returned when a lineup already existed in account.
 	ErrDuplicateLineup ErrorCode = 2100
 
-	// LineupNotFound is returned when lineup is not in an account.
-	// ErrLineupNotFound lineup to account before requesting mapping.
+	// ErrLineupNotFound is returned when lineup is not in an account.
+	// Add lineup to account before requesting mapping.
 	ErrLineupNotFound ErrorCode = 2101
 
-	// UnknownLineup is returned when invalid lineup requested.
-	// ErrUnknownLineup your COUNTRY / POSTALCODE combination for validity.
+	// ErrUnknownLineup is returned when invalid lineup requested.
+	// Check your COUNTRY / POSTALCODE combination for validity.
 	ErrUnknownLineup ErrorCode = 2102
 
 	// ErrInvalidLineupDelete is returned when delete of lineup not in account.
@@ -73,8 +73,8 @@ const (
 	// ErrLineupDeleted is returned when the lineup you requested has been deleted from the server.
 	ErrLineupDeleted ErrorCode = 2106
 
-	// LineupQueued is returned when the lineup is being generated on the server.
-	// ErrLineupQueued retry.
+	// ErrLineupQueued is returned when the lineup is being generated on the server.
+	// Please retry.
 	ErrLineupQueued ErrorCode = 2107
 
 	// ErrInvalidCountry is returned when the country you requested is either mis-typed or does not have valid data.
@@ -95,16 +95,16 @@ const (
 	// ErrInvalidUser is returned when invalid username or password.
 	ErrInvalidUser ErrorCode = 4003
 
-	// AccountLockout is returned when too many login failures.
-	// ErrAccountLockout for 15 minutes.
+	// ErrAccountLockout is returned when too many login failures.
+	// Locked for 15 minutes.
 	ErrAccountLockout ErrorCode = 4004
 
-	// AccountDisabled is returned when account has been disabled.
-	// ErrAccountDisabled contact Schedules Direct support: admin@schedulesdirect.org for more information.
+	// ErrAccountDisabled is returned when account has been disabled.
+	// Please contact Schedules Direct support: admin@schedulesdirect.org for more information.
 	ErrAccountDisabled ErrorCode = 4005
 
-	// TokenExpired is returned when token has expired.
-	// ErrTokenExpired new token.
+	// ErrTokenExpired is returned when token has expired.
+	// Request new token.
 	ErrTokenExpired ErrorCode = 4006
 
 	// ErrMaxLineupChangesReached is returned when exceeded maximum number of lineup changes for today.
@@ -116,24 +116,24 @@ const (
 	// ErrNoLineups is returned when no lineups have been added to this account.
 	ErrNoLineups ErrorCode = 4102
 
-	// ImageNotFound is returned when could not find requested image.
-	// ErrImageNotFound message to http://forums.schedulesdirect.org/viewforum.php?f=6 if you are having issues.
+	// ErrImageNotFound is returned when could not find requested image.
+	// Post message to http://forums.schedulesdirect.org/viewforum.php?f=6 if you are having issues.
 	ErrImageNotFound ErrorCode = 5000
 
-	// InvalidProgramID is returned when could not find requested programID.
-	// ErrInvalidProgramID failure.
+	// ErrInvalidProgramID is returned when could not find requested programID.
+	// Permanent  failure.
 	ErrInvalidProgramID ErrorCode = 6000
 
-	// ProgramidQueued is returned when programID should exist at the server, but doesn't.
-	// ErrProgramidQueued server will regenerate the JSON for the program, so your application should retry.
+	// ErrProgramidQueued is returned when programID should exist at the server, but doesn't.
+	// The server will regenerate the JSON for the program, so your application should retry.
 	ErrProgramidQueued ErrorCode = 6001
 
-	// ScheduleNotFound is returned when the schedule you requested should be available.
-	// ErrScheduleNotFound message to http://forums.schedulesdirect.org/viewforum.php?f=6
+	// ErrScheduleNotFound is returned when the schedule you requested should be available.
+	// Post message to http://forums.schedulesdirect.org/viewforum.php?f=6
 	ErrScheduleNotFound ErrorCode = 7000
 
-	// InvalidScheduleRequest is returned when the server can't determine whether your schedule is valid or not.
-	// ErrInvalidScheduleRequest a support ticket.
+	// ErrInvalidScheduleRequest is returned when the server can't determine whether your schedule is valid or not.
+	// Open a support ticket.
 	ErrInvalidScheduleRequest ErrorCode = 7010
 
 	// ErrScheduleRangeExceeded is returned when the date that you've requested is outside of the range of the data for that stationID.
@@ -142,12 +142,12 @@ const (
 	// ErrScheduleNotInLineup is returned when you have requested a schedule which is not in any of your configured lineups.
 	ErrScheduleNotInLineup ErrorCode = 7030
 
-	// ScheduleQueued is returned when the schedule you requested has been queued for generation but is not yet ready for download.
-	// ErrScheduleQueued.
+	// ErrScheduleQueued is returned when the schedule you requested has been queued for generation but is not yet ready for download.
+	// Retry.
 	ErrScheduleQueued ErrorCode = 7100
 
-	// HCF is returned when Unknown error.
-	// ErrHCF support ticket.
+	// ErrHCF is returned when Unknown error.
+	// Open support ticket.
 	ErrHCF ErrorCode = 9999
 )
 
@@ -169,17 +169,17 @@ func (c ErrorCode) InternalCode() string {
 	case ErrRequiredRequestMissing:
 		return "REQUIRED_REQUEST_MISSING"
 	case ErrRequiredParameterMissingCountry:
-		return "REQUIRED_PARAMETER_MISSING"
+		return "REQUIRED_PARAMETER_MISSING:COUNTRY"
 	case ErrRequiredParameterMissingPostalCode:
-		return "REQUIRED_PARAMETER_MISSING"
+		return "REQUIRED_PARAMETER_MISSING:POSTALCODE"
 	case ErrRequiredParameterMissingMessageID:
-		return "REQUIRED_PARAMETER_MISSING"
+		return "REQUIRED_PARAMETER_MISSING:MSGID"
 	case ErrInvalidParameterCountry:
-		return "INVALID_PARAMETER"
+		return "INVALID_PARAMETER:COUNTRY"
 	case ErrInvalidParameterPostalCode:
-		return "INVALID_PARAMETER"
+		return "INVALID_PARAMETER:POSTALCODE"
 	case ErrInvalidParameterFetchType:
-		return "INVALID_PARAMETER"
+		return "INVALID_PARAMETER:FETCHTYPE"
 	case ErrDuplicateLineup:
 		return "DUPLICATE_LINEUP"
 	case ErrLineupNotFound:

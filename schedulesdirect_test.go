@@ -33,21 +33,21 @@ func setup() {
 	}
 }
 
-func testMethod(t *testing.T, r *http.Request, expectedMethod string) {
+func ensureMethod(t *testing.T, r *http.Request, expectedMethod string) {
 	t.Helper()
 	if r.Method != expectedMethod {
 		t.Fatalf("method (%s) != expectedMethod (%s)", r.Method, expectedMethod)
 	}
 }
 
-func testHeader(t *testing.T, r *http.Request, header, expectedValue string) {
+func ensureHeader(t *testing.T, r *http.Request, header, expectedValue string) {
 	t.Helper()
 	if r.Header.Get(header) != expectedValue {
 		t.Fatalf("token (%s) != expectedValue (%s)", r.Header.Get("token"), expectedValue)
 	}
 }
 
-func testPayload(t *testing.T, r *http.Request, expect []byte) {
+func ensurePayload(t *testing.T, r *http.Request, expect []byte) {
 	t.Helper()
 	data, errRead := ioutil.ReadAll(r.Body)
 	if errRead != nil {
@@ -59,7 +59,7 @@ func testPayload(t *testing.T, r *http.Request, expect []byte) {
 	}
 }
 
-func testUrlParameter(t *testing.T, r *http.Request, parameter, expectedValue string) {
+func ensureURLParameter(t *testing.T, r *http.Request, parameter, expectedValue string) {
 	t.Helper()
 	p := r.URL.Query().Get(parameter)
 
@@ -79,9 +79,9 @@ func ensureError(t *testing.T, err error, expectedCode ErrorCode) {
 			t.Fatalf(`was expecting error to be of type "%s" (%d), was instead "%s" (%d)`, expectedCode.InternalCode(), int64(expectedCode), e.Code.InternalCode(), int64(expectedCode))
 		}
 		return
-	} else {
-		t.Fatalf("error was not of type BaseResponse, error string is: %s", err)
 	}
+
+	t.Fatalf("error was not of type BaseResponse, error string is: %s", err)
 }
 
 func TestGetTokenOK(t *testing.T) {
@@ -89,7 +89,7 @@ func TestGetTokenOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/token"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "POST")
+			ensureMethod(t, r, "POST")
 
 			var tokenResp TokenResponse
 
@@ -130,7 +130,7 @@ func TestGetTokenInvalidUser(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/token"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "POST")
+			ensureMethod(t, r, "POST")
 
 			var tokenResp TokenResponse
 
@@ -152,8 +152,8 @@ func TestGetStatusOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/status"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
 			fmt.Fprint(w, `{"account":{"expires":"2014-09-26T19:07:28Z","messages":[],"maxLineups":4,"nextSuggestedConnectTime":"2014-07-29T22:43:22Z"},"lineups":[],"lastDataUpdate":"2014-07-28T14:48:59Z","notifications":[],"systemStatus":[{"date":"2012-12-17T16:24:47Z","status":"Online","details":"All servers running normally."}],"serverID":"serverID1","code":0}`)
 		},
@@ -176,10 +176,10 @@ func TestGetHeadendsOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/headends"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testUrlParameter(t, r, "country", "CAN")
-			testUrlParameter(t, r, "postalcode", "H0H 0H0")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureURLParameter(t, r, "country", "CAN")
+			ensureURLParameter(t, r, "postalcode", "H0H 0H0")
 
 			fmt.Fprint(w, `[{"headend":"0000001","lineups":[{"name":"name1","uri":"uri1"},{"name":"name2","uri":"uri2"}],"location":"City1","transport":"type1"},{"headend":"0000002","lineups":[{"name":"name3","uri":"uri3"}],"location":"City2","transport":"type2"}]`)
 		},
@@ -214,10 +214,10 @@ func TestGetHeadendsFailsWithMessage(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/headends"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testUrlParameter(t, r, "country", "CAN")
-			testUrlParameter(t, r, "postalcode", "H0H 0H0")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureURLParameter(t, r, "country", "CAN")
+			ensureURLParameter(t, r, "postalcode", "H0H 0H0")
 
 			fmt.Fprint(w, `{"response":"INVALID_PARAMETER:COUNTRY","code":2050,"serverID":"serverID1","message":"The COUNTRY parameter must be ISO-3166-1 alpha 3. See http:\/\/en.wikipedia.org\/wiki\/ISO_3166-1_alpha-3","datetime":"2014-07-29T23:16:52Z"}`)
 		},
@@ -232,10 +232,10 @@ func TestGetHeadendsFailsWithMessage2(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/headends"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testUrlParameter(t, r, "country", "CAN")
-			testUrlParameter(t, r, "postalcode", "H0H 0H0")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureURLParameter(t, r, "country", "CAN")
+			ensureURLParameter(t, r, "postalcode", "H0H 0H0")
 
 			fmt.Fprint(w, `{"response":"REQUIRED_PARAMETER_MISSING:COUNTRY","code":2004,"serverID":"serverID1","message":"In order to search for lineups, you must supply a 3-letter country parameter.","datetime":"2014-07-29T23:15:18Z"}`)
 		},
@@ -250,8 +250,8 @@ func TestAddLineupOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "PUT")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "PUT")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			fmt.Fprint(w, `{"response":"OK","code":0,"serverID":"serverID1","message":"Added lineup.","changesRemaining":5,"datetime":"2014-07-30T01:50:59Z"}`)
 		},
 	)
@@ -271,8 +271,8 @@ func TestAddLineupFailsDuplicate(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "PUT")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "PUT")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			fmt.Fprint(w, `{"response":"DUPLICATE_HEADEND","code":2100,"serverID":"serverID1","message":"Headend already in account.","datetime":"2014-07-30T02:01:37Z"}`)
 		},
 	)
@@ -286,8 +286,8 @@ func TestAddLineupFailsInvalidLineup(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "PUT")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "PUT")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
 			fmt.Fprint(w, `{"response":"INVALID_LINEUP","code":2105,"serverID":"serverID1","message":"The lineup you submitted doesn't exist.","datetime":"2014-07-30T02:02:04Z"}`)
 		},
@@ -302,8 +302,8 @@ func TestAddLineupFailsInvalidUser(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "PUT")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "PUT")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			fmt.Fprint(w, `{"response":"INVALID_USER","code":4003,"serverID":"serverID1","message":"Invalid user.","datetime":"2014-07-30T01:48:11Z"}`)
 		},
 	)
@@ -317,8 +317,8 @@ func TestDeleteLineupOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "DELETE")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "DELETE")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			fmt.Fprint(w, `{"response":"OK","code":0,"serverID":"serverid1","message":"Deleted lineup.","changesRemaining":"5","datetime":"2014-07-30T03:27:23Z"}`)
 		},
 	)
@@ -338,8 +338,8 @@ func TestDeleteLineupFailsInvalidLineup(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "DELETE")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "DELETE")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
 			fmt.Fprint(w, `{"response":"INVALID_LINEUP","code":2105,"serverID":"serverID1","message":"The lineup you submitted doesn't exist.","datetime":"2014-07-30T02:02:04Z"}`)
 		},
@@ -354,8 +354,8 @@ func TestGetLineupsOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
 			fmt.Fprint(w, `{"serverID":"serverid1","datetime":"2014-07-30T02:34:37Z","lineups":[{"name":"name1","type":"type1","location":"location1","uri":"uri1"}]}`)
 		},
@@ -378,8 +378,8 @@ func TestGetLineupsFailsNoHeadends(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
 			// bug with the web service?
 			http.Error(w, "", http.StatusBadRequest)
@@ -414,8 +414,8 @@ func TestGetChannelsOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			fmt.Fprint(w, `{"map": [{"channel": "101","stationID": "10001"},{"channel": "1933","stationID": "10001"}],"metadata": {"lineup": "CAN-0000000-X","modified": "2014-07-29T16:38:09Z","transport": "transport1"},"stations": [{"affiliate": "affiliate1","broadcaster": {"city": "Unknown","country": "Unknown","postalcode": "00000"},"callsign": "callsign1","language": "en","name": "name1","stationID": "10001"},       {"callsign": "callsign2","language": "en","logo": {"URL": "https://domain/path/file.png","dimension": "w=360px|h=270px","md5": "ba5b5b5085baac6da247564039c03c9e"},"name": "name2","stationID": "10002"}]}`)
 		},
 	)
@@ -441,8 +441,8 @@ func TestGetChannelsFailsLineupNotFound(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "GET")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensureMethod(t, r, "GET")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			fmt.Fprint(w, `{"response":"LINEUP_NOT_FOUND","code":2101,"serverID":"serverid1","message":"Lineup not in account. Add lineup to account before requesting mapping.","datetime":"2014-07-30T04:14:27Z"}`)
 		},
 	)
@@ -473,9 +473,9 @@ func TestGetProgramInfoOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/programs"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "POST")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testPayload(t, r, []byte(`["program1","program2"]`))
+			ensureMethod(t, r, "POST")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensurePayload(t, r, []byte(`["program1","program2"]`))
 
 			fmt.Fprint(w, `[{"programID":"program1","titles":[{"title120":"title1"}],"eventDetails":{"subType":"subType1"},"originalAirDate":"2012-01-01","genres":["genre1"],"showType":"type1","md5":"edbb1c792032ba8685fd021c28c6ea74"},
 {"programID":"program2","titles":[{"title120":"title2"}],"eventDetails":{"subType":"subType2"},"originalAirDate":"2012-01-01","genres":["genre2"],"showType":"type2","md5":"edbb1c792032ba8685fd021c28c6ea74"}]`)
@@ -507,9 +507,9 @@ func TestGetProgramInfoFailsRequiredRequestMissing(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/programs"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "POST")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testPayload(t, r, []byte(`["program1","program2"]`))
+			ensureMethod(t, r, "POST")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensurePayload(t, r, []byte(`["program1","program2"]`))
 
 			fmt.Fprint(w, `{"response":"REQUIRED_REQUEST_MISSING","code":2002,"serverID":"serverid1","message":"Did not receive request.","datetime":"2014-07-30T05:02:22Z"}`)
 		},
@@ -527,9 +527,9 @@ func TestGetProgramInfoFailsDeflateRequired(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/programs"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "POST")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testPayload(t, r, []byte(`["program1","program2"]`))
+			ensureMethod(t, r, "POST")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensurePayload(t, r, []byte(`["program1","program2"]`))
 
 			fmt.Fprint(w, `{"response":"DEFLATE_REQUIRED","code":1002,"serverID":"serverid1","message":"Did not receive Accept-Encoding: deflate in request","datetime":"2014-07-30T05:02:42Z"}`)
 		},
@@ -547,9 +547,9 @@ func TestGetSchedulesOK(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/schedules"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "POST")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testPayload(t, r, []byte(`[{"stationID":"10001"},{"stationID":"10002"}]`))
+			ensureMethod(t, r, "POST")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensurePayload(t, r, []byte(`[{"stationID":"10001"},{"stationID":"10002"}]`))
 
 			fmt.Fprint(w, `[{"metadata": {"endDate": "2014-08-12","startDate": "2014-07-30"},"programs": [{"airDateTime": "2014-07-30T00:30:00Z","audioProperties": ["ap1","ap2"],"contentRating": [{"body": "body1","code": "code1"}],"duration": 1800,"md5": "exubfjxJmKcSe52dVLj83g","new": true,"programID": "program1","syndication": {"source": "ss1","type": "st1"}},{"airDateTime": "2014-08-12T23:30:00Z","audioProperties": ["ap3","ap4","ap5"],"contentAdvisory": {"rating1": ["stuff1","stuff2"]},"contentRating": [{"body": "body2","code": "code2"}],"duration": 1800,"md5": "5BxxvnI4Nv9ZuT9oQvOpQA","programID": "program2","syndication": {"source": "ss2","type": "st2"}}],"stationID": "10001"},
 {"metadata": {"endDate": "2014-08-12","startDate": "2014-07-30"},"programs": [{"airDateTime": "2014-07-30T00:30:00Z","duration": 1800,"md5": "exubfjxJmKcSe52dVLj83g","new": true,"programID": "program3","syndication": {"source": "ss3","type": "st3"}}],"stationID": "10002"}]`)
@@ -589,9 +589,9 @@ func TestGetSchedulesFailsStationNotInLineup(t *testing.T) {
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/schedules"),
 		func(w http.ResponseWriter, r *http.Request) {
-			testMethod(t, r, "POST")
-			testHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			testPayload(t, r, []byte(`[{"stationID":"10002"}]`))
+			ensureMethod(t, r, "POST")
+			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
+			ensurePayload(t, r, []byte(`[{"stationID":"10002"}]`))
 
 			fmt.Fprint(w, `{"stationID":10002,"response":"ERROR","code":2200,"serverID":"serverid1","message":"This stationID (10002) is not in any of your lineups.","datetime":"2014-07-30T17:14:56Z"}`)
 		},

@@ -226,8 +226,8 @@ type ProgramArtwork struct {
 // ProgramArtworkResponse is a container struct for artwork relating to a program.
 type ProgramArtworkResponse struct {
 	ProgramID string            `json:"programID,omitempty"`
-	Error     *BaseResponse     `json:"-,omitempty"`
-	Artwork   *[]ProgramArtwork `json:"-,omitempty"`
+	Error     *BaseResponse     `json:"-"`
+	Artwork   *[]ProgramArtwork `json:"-"`
 	wrapper   struct {
 		PID  string          `json:"programID,omitempty"`
 		Data json.RawMessage `json:"data,omitempty"`
