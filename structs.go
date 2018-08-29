@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 )
 
-// Date is a Schedules Direct specific date format (YYYY-MM-DD) with (Un)MarshalJSON functions.
+// Date is a Schedules Direct specific date format (YYYY[-MM-DD]) with (Un)MarshalJSON functions.
 type Date struct {
 	*time.Time
 	fmt string
@@ -21,19 +22,25 @@ func (p Date) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON converts Schedule Direct's format to a time.Time.
-func (p *Date) UnmarshalJSON(text []byte) (err error) {
-	strDate := string(text[1:11])
-
+func (p *Date) UnmarshalJSON(text []byte) error {
 	dateFormat := "2006-01-02"
-	if len(strDate) == 4 { // Year only
+
+	str, unquoteErr := strconv.Unquote(string(text))
+	if unquoteErr != nil {
+		return unquoteErr
+	}
+
+	if len(str) == 4 {
 		dateFormat = "2006"
 	}
 
-	v, e := time.Parse(dateFormat, strDate)
+	v, e := time.Parse(dateFormat, str)
 	if e != nil {
-		return fmt.Errorf("schedulesdirect.Date should be a time, error value is: %s", strDate)
+		return fmt.Errorf("schedulesdirect.Date should be a time, error value is: %s", text)
 	}
+
 	*p = Date{&v, dateFormat}
+
 	return nil
 }
 
