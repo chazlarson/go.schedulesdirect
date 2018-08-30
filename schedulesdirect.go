@@ -125,6 +125,111 @@ func (c *Client) GetStatus() (*StatusResponse, error) {
 	return s, err
 }
 
+// GetAvailableServices returns the available services.
+func (c *Client) GetAvailableServices() ([]Service, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/available")
+
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.SendRequest(req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make([]Service, 0)
+
+	err = json.Unmarshal(data, &r)
+	return r, err
+}
+
+// GetAvailableCountries returns the list of countries, grouped by region, supported by Schedules Direct.
+func (c *Client) GetAvailableCountries() (map[string][]Country, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/available/countries")
+
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.SendRequest(req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make(map[string][]Country)
+
+	err = json.Unmarshal(data, &r)
+
+	return r, err
+}
+
+// GetAvailableLanguages returns the list of language digraphs and their language names.
+func (c *Client) GetAvailableLanguages() (map[string]string, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/available/languages")
+
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.SendRequest(req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make(map[string]string)
+
+	err = json.Unmarshal(data, &r)
+
+	return r, err
+}
+
+// GetAvailableDVBS returns the list of satellites which are available.
+func (c *Client) GetAvailableDVBS() ([]AvailableDVBS, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/available/dvb-s")
+
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.SendRequest(req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make([]AvailableDVBS, 0)
+
+	err = json.Unmarshal(data, &r)
+
+	return r, err
+}
+
+// GetAvailableTransmitters returns the list of freeview transmitters in a country for the given countryCode.
+// Country options: GBR.
+func (c *Client) GetAvailableTransmitters(countryCode string) (map[string]string, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/available/transmitters/", countryCode)
+
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.SendRequest(req, false)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make(map[string]string, 0)
+
+	err = json.Unmarshal(data, &r)
+
+	return r, err
+}
+
 // AddLineup adds the given lineup uri to the users SchedulesDirect account.
 func (c *Client) AddLineup(lineupID string) (*ChangeLineupResponse, error) {
 	url := fmt.Sprint(c.BaseURL, APIVersion, "/lineups/", lineupID)
@@ -160,6 +265,26 @@ func (c *Client) DeleteLineup(lineupID string) (*ChangeLineupResponse, error) {
 	}
 
 	r := &ChangeLineupResponse{}
+
+	err = json.Unmarshal(data, &r)
+	return r, err
+}
+
+// PreviewLineup returns a slice of StationPreview containing the channels available in the provided lineupID.
+func (c *Client) PreviewLineup(lineupID string) ([]StationPreview, error) {
+	url := fmt.Sprint(c.BaseURL, APIVersion, "/lineups/preview/", lineupID)
+
+	req, httpErr := http.NewRequest("GET", url, nil)
+	if httpErr != nil {
+		return nil, httpErr
+	}
+
+	_, data, err := c.SendRequest(req, true)
+	if err != nil {
+		return nil, err
+	}
+
+	r := make([]StationPreview, 0)
 
 	err = json.Unmarshal(data, &r)
 	return r, err

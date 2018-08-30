@@ -188,7 +188,7 @@ type ChannelResponseMeta struct {
 	Modulation string     `json:"modulation,omitempty"`
 }
 
-// A Station stores the that a station.
+// A Station stores a station in a lineup or schedule.
 type Station struct {
 	Affiliate           string           `json:"affiliate,omitempty"`
 	Broadcaster         *BroadcasterInfo `json:"broadcaster,omitempty"`
@@ -210,6 +210,14 @@ type StationLogo struct {
 	Width  int    `json:"width,omitempty"`
 	MD5    string `json:"md5,omitempty"`
 	Source string `json:"source,omitempty"`
+}
+
+// StationPreview is a slim version of Station containing the fields only visible during lineup preview.
+type StationPreview struct {
+	Affiliate string `json:"affiliate,omitempty"`
+	CallSign  string `json:"callsign,omitempty"`
+	Channel   string `json:"channel,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
 // A ChannelMap stores the station id to channel mapping
@@ -284,4 +292,25 @@ type StillRunningResponse struct {
 		AwayTeam *Team `json:"awayTeam,omitempty"`
 		HomeTeam *Team `json:"homeTeam,omitempty"`
 	} `json:"result,omitempty"`
+}
+
+// Service describes an available service such as countries.
+type Service struct {
+	Description string `json:"description"`
+	Type        string `json:"type"`
+	URI         string `json:"uri"`
+}
+
+// Country describes a country that Schedules Direct supports.
+type Country struct {
+	FullName          string `json:"fullName"`
+	PostalCode        string `json:"postalCode"`
+	PostalCodeExample string `json:"postalCodeExample"`
+	ShortName         string `json:"shortName"`
+	OnePostalCode     bool   `json:"onePostalCode"`
+}
+
+// AvailableDVBS is a single satellite available via DVB-S.
+type AvailableDVBS struct {
+	Lineup string `json:"lineup"`
 }
