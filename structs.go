@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -65,6 +66,41 @@ func (f *jsonInt) UnmarshalJSON(data []byte) error {
 	return err
 }
 
+// ConvertibleBoolean is a helper type to allow JSON documents using 0/1, "true" and "false" or "yes" and "no" be converted to bool.
+type ConvertibleBoolean struct {
+	bool
+	quoted bool
+}
+
+// MarshalJSON returns a 0 or 1 depending on bool state.
+func (bit ConvertibleBoolean) MarshalJSON() ([]byte, error) {
+	var bitSetVar int8
+	if bit.bool {
+		bitSetVar = 1
+	}
+
+	if bit.quoted {
+		return json.Marshal(fmt.Sprint(bitSetVar))
+	}
+
+	return json.Marshal(bitSetVar)
+}
+
+// UnmarshalJSON converts a 0, 1, true or false into a bool
+func (bit *ConvertibleBoolean) UnmarshalJSON(data []byte) error {
+	bit.quoted = strings.Contains(string(data), `"`)
+	// Bools are sometimes quoted, sometimes not, lets just always remove quotes just in case...
+	asString := strings.Replace(string(data), `"`, "", -1)
+	if asString == "1" || asString == "true" || asString == "yes" {
+		bit.bool = true
+	} else if asString == "0" || asString == "false" || asString == "no" {
+		bit.bool = false
+	} else {
+		return fmt.Errorf("Boolean unmarshal error: invalid input %s", asString)
+	}
+	return nil
+}
+
 // BaseResponse contains the fields that every request is expected to return.
 type BaseResponse struct {
 	Response string     `json:"response,omitempty"`
@@ -76,6 +112,9 @@ type BaseResponse struct {
 
 // Error returns a error string.
 func (e *BaseResponse) Error() string {
+	if e == nil {
+		return "unknown error"
+	}
 	msg := e.Message
 	if msg == "" {
 		msg = e.Response

@@ -147,6 +147,7 @@ func (c *Client) GetAvailableServices() ([]Service, error) {
 
 // GetAvailableCountries returns the list of countries, grouped by region, supported by Schedules Direct.
 func (c *Client) GetAvailableCountries() (map[string][]Country, error) {
+	fmt.Printf("CLIENT %+v", c)
 	url := fmt.Sprint(c.BaseURL, APIVersion, "/available/countries")
 
 	req, httpErr := http.NewRequest("GET", url, nil)
@@ -647,12 +648,12 @@ func (c *Client) GetProgramStillRunning(programID string) (*StillRunningResponse
 //
 // If more than 500 Program IDs are provided, the client will automatically
 // chunk the slice into groups of 500 IDs and return all responses to you.
-func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkResponse, error) {
+func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ArtworkResponse, error) {
 	// If user passed more than 500 programIDs, let's help them out by
 	// chunking the requests for them.
 	// Obviously you can disable this behavior by passing less than 500 IDs.
 	if len(programIDs) > 500 {
-		allResponses := make([]ProgramArtworkResponse, len(programIDs))
+		allResponses := make([]ArtworkResponse, 0)
 		for _, chunk := range chunkStringSlice(programIDs, 500) {
 			resp, err := c.GetArtworkForProgramIDs(chunk)
 			if err != nil {
@@ -661,14 +662,6 @@ func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkR
 			allResponses = append(allResponses, resp...)
 		}
 		return allResponses, nil
-	}
-
-	// Artwork endpoint only wants the leftmost 10 characters of the programID.
-	// In case users pass the full 14 character string, let's help them out.
-	for idx, programID := range programIDs {
-		if len(programID) > 10 {
-			programIDs[idx] = programID[:10]
-		}
 	}
 
 	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/programs")
@@ -689,7 +682,7 @@ func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkR
 		return nil, err
 	}
 
-	programArtwork := make([]ProgramArtworkResponse, 0)
+	programArtwork := make([]ArtworkResponse, 0)
 
 	if err = json.Unmarshal(data, &programArtwork); err != nil {
 		return nil, err
@@ -699,7 +692,7 @@ func (c *Client) GetArtworkForProgramIDs(programIDs []string) ([]ProgramArtworkR
 }
 
 // GetArtworkForRootID returns artwork for the given programIDs.
-func (c *Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
+func (c *Client) GetArtworkForRootID(rootID string) ([]Artwork, error) {
 	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/programs/", rootID)
 
 	// setup the request
@@ -713,7 +706,7 @@ func (c *Client) GetArtworkForRootID(rootID string) ([]ProgramArtwork, error) {
 		return nil, err
 	}
 
-	programArtwork := make([]ProgramArtwork, 0)
+	programArtwork := make([]Artwork, 0)
 
 	if err = json.Unmarshal(data, &programArtwork); err != nil {
 		return nil, err
@@ -745,7 +738,7 @@ func (c *Client) GetImage(imageURI string) ([]byte, error) {
 }
 
 // GetCelebrityArtwork returns artwork for the given programIDs.
-func (c *Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, error) {
+func (c *Client) GetCelebrityArtwork(celebrityID string) ([]Artwork, error) {
 	url := fmt.Sprint(c.BaseURL, APIVersion, "/metadata/celebrity/", celebrityID)
 
 	// setup the request
@@ -759,7 +752,7 @@ func (c *Client) GetCelebrityArtwork(celebrityID string) ([]ProgramArtwork, erro
 		return nil, err
 	}
 
-	programArtwork := make([]ProgramArtwork, 0)
+	programArtwork := make([]Artwork, 0)
 
 	if err = json.Unmarshal(data, &programArtwork); err != nil {
 		return nil, err
