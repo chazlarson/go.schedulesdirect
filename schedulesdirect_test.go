@@ -13,24 +13,21 @@ import (
 
 // inspired by https://willnorris.com/2013/08/testing-in-go-github
 // adapted from github.com/bbigras/go-schedulesdirect
-var (
-	mux    *http.ServeMux
-	server *httptest.Server
-	client *Client
-)
 
-func setup() {
+func setup() (*http.ServeMux, *Client) {
 	// test server
-	mux = http.NewServeMux()
-	server = httptest.NewServer(mux)
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
 
 	// schedules direct client configured to use test server
-	client = &Client{
+	client := &Client{
 		BaseURL:        fmt.Sprint(server.URL, "/"),
 		HTTP:           http.DefaultClient,
 		Token:          "d97c908ed44c25fdca302612c70584c8d5acd47a", // token1
 		TokenExpiresAt: time.Now().Add(24 * time.Hour),
 	}
+
+	return mux, client
 }
 
 func ensureMethod(t *testing.T, r *http.Request, expectedMethod string) {
@@ -97,7 +94,7 @@ func getBaseResponse(wantedError ErrorCode) string {
 }
 
 func TestGetTokenOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/token"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +137,7 @@ func TestEncryptPassword(t *testing.T) {
 }
 
 func TestGetTokenInvalidUser(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/token"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +159,7 @@ func TestGetTokenInvalidUser(t *testing.T) {
 }
 
 func TestGetStatusOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/status"),
 		func(w http.ResponseWriter, r *http.Request) {

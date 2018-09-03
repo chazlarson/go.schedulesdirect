@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetHeadendsOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/headends"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +46,7 @@ func TestGetHeadendsOK(t *testing.T) {
 }
 
 func TestGetHeadendsFailsWithMessage(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/headends"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +64,7 @@ func TestGetHeadendsFailsWithMessage(t *testing.T) {
 }
 
 func TestGetHeadendsFailsWithMessage2(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/headends"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +82,7 @@ func TestGetHeadendsFailsWithMessage2(t *testing.T) {
 }
 
 func TestAddLineupOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +106,7 @@ func TestAddLineupOK(t *testing.T) {
 }
 
 func TestAddLineupFailsDuplicate(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +122,7 @@ func TestAddLineupFailsDuplicate(t *testing.T) {
 }
 
 func TestAddLineupFailsInvalidLineup(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -138,7 +138,7 @@ func TestAddLineupFailsInvalidLineup(t *testing.T) {
 }
 
 func TestAddLineupFailsInvalidUser(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/token"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +171,7 @@ func TestAddLineupFailsInvalidUser(t *testing.T) {
 }
 
 func TestDeleteLineupOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +195,7 @@ func TestDeleteLineupOK(t *testing.T) {
 }
 
 func TestDeleteLineupFailsInvalidLineup(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +211,7 @@ func TestDeleteLineupFailsInvalidLineup(t *testing.T) {
 }
 
 func TestGetLineupsOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +235,7 @@ func TestGetLineupsOK(t *testing.T) {
 }
 
 func TestGetLineupsFailsNoHeadends(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +251,7 @@ func TestGetLineupsFailsNoHeadends(t *testing.T) {
 }
 
 func TestGetChannelsOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -278,7 +278,7 @@ func TestGetChannelsOK(t *testing.T) {
 }
 
 func TestGetChannelsFailsLineupNotFound(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {

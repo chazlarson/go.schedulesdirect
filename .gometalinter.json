@@ -1,13 +1,34 @@
 {
-  "Disable": [
-    "aligncheck",
-    "gocyclo"
+  "Enable": [
+    "deadcode",
+    "errcheck",
+    "gochecknoglobals",
+    "gochecknoinits",
+    "goconst",
+    "gofmt",
+    "goimports",
+    "golint",
+    "gosec",
+    "gotype",
+    "gotypex",
+    "ineffassign",
+    "interfacer",
+    "megacheck",
+    "misspell",
+    "nakedret",
+    "safesql",
+    "structcheck",
+    "test",
+    "testify",
+    "unconvert",
+    "unparam",
+    "varcheck",
+    "vet",
+    "vetshadow"
   ],
-  "Enable": ["goimports", "gofmt", "misspell", "unparam"],
   "Deadline": "5m",
   "Sort": [
     "path",
     "linter"
-  ],
-  "Vendor": true
+  ]
 }

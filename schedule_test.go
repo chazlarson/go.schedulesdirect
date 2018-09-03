@@ -27,7 +27,7 @@ func TestScheduleEquality(t *testing.T) {
 }
 
 func TestGetSchedulesOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/schedules"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +69,7 @@ func TestGetSchedulesOK(t *testing.T) {
 }
 
 func TestGetSchedulesFailsStationNotInLineup(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/schedules"),
 		func(w http.ResponseWriter, r *http.Request) {

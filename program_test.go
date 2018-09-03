@@ -27,7 +27,7 @@ func TestProgramInfoEquality(t *testing.T) {
 }
 
 func TestGetProgramInfoOK(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/programs"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +61,7 @@ func TestGetProgramInfoOK(t *testing.T) {
 }
 
 func TestGetProgramInfoFailsRequiredRequestMissing(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/programs"),
 		func(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +81,7 @@ func TestGetProgramInfoFailsRequiredRequestMissing(t *testing.T) {
 }
 
 func TestGetProgramInfoFailsDeflateRequired(t *testing.T) {
-	setup()
+	mux, client := setup()
 
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/programs"),
 		func(w http.ResponseWriter, r *http.Request) {
