@@ -1,0 +1,13 @@
+{
+  "Disable": [
+    "aligncheck",
+    "gocyclo"
+  ],
+  "Enable": ["goimports", "gofmt", "misspell", "unparam"],
+  "Deadline": "5m",
+  "Sort": [
+    "path",
+    "linter"
+  ],
+  "Vendor": true
+}
