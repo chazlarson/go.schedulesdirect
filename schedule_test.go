@@ -41,8 +41,8 @@ func TestGetSchedulesOK(t *testing.T) {
 	)
 
 	schedules, err := client.GetSchedules([]StationScheduleRequest{
-		StationScheduleRequest{StationID: "10001"},
-		StationScheduleRequest{StationID: "10002"},
+		{StationID: "10001"},
+		{StationID: "10002"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestGetSchedulesFailsStationNotInLineup(t *testing.T) {
 	)
 
 	_, err := client.GetSchedules([]StationScheduleRequest{
-		StationScheduleRequest{StationID: "10002"},
+		{StationID: "10002"},
 	})
 	ensureError(t, err, ErrStationIDNotFound)
 }
