@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Some constants for use in the library
@@ -33,9 +34,16 @@ type Client struct {
 
 	// The token
 	Token string
+	// Time we last received a token + 24 hours.
+	TokenExpiresAt time.Time
 
 	// The User-Agent to send on every request.
 	UserAgent string
+
+	// We store username and password in the client in case we need to attempt a token refresh.
+	username       string
+	password       string
+	failedRequests int
 }
 
 // NewClient returns a new Schedules Direct API client. Uses http.DefaultClient if no http.Client is set.
@@ -44,6 +52,8 @@ func NewClient(username string, password string) (*Client, error) {
 		BaseURL:   DefaultBaseURL,
 		HTTP:      http.DefaultClient,
 		UserAgent: DefaultUserAgent,
+		username:  username,
+		password:  password,
 	}
 	token, tokenErr := c.GetToken(username, password)
 	if tokenErr != nil {
@@ -84,20 +94,33 @@ func (c *Client) GetToken(username string, password string) (string, error) {
 		return "", httpErr
 	}
 
-	// perform the POST
-	_, data, err := c.SendRequest(req, false)
-	if err != nil {
-		return "", err
+	response, httpErr := c.HTTP.Do(req)
+	if httpErr != nil {
+		return "", fmt.Errorf("cannot reach schedules direct service: %s", httpErr)
+	}
+
+	buf := &bytes.Buffer{}
+	if _, copyErr := io.Copy(buf, response.Body); copyErr != nil {
+		return "", fmt.Errorf("error when copying bytes of response to buffer: %s", copyErr)
+	}
+
+	if closeErr := response.Body.Close(); closeErr != nil {
+		return "", fmt.Errorf("cannot read response. %v", closeErr)
 	}
 
 	// create a TokenResponse struct, return if err
-	r := TokenResponse{}
+	r := &TokenResponse{}
 
 	// decode the response body into the new TokenResponse struct
-	err = json.Unmarshal(data, &r)
-	if err != nil {
+	if err := json.Unmarshal(buf.Bytes(), r); err != nil {
 		return "", err
 	}
+
+	if r.BaseResponse.Code != ErrOK {
+		return "", r.BaseResponse
+	}
+
+	c.TokenExpiresAt = r.BaseResponse.DateTime.Add(24 * time.Hour)
 
 	// return the token string
 	return r.Token, nil
@@ -147,7 +170,6 @@ func (c *Client) GetAvailableServices() ([]Service, error) {
 
 // GetAvailableCountries returns the list of countries, grouped by region, supported by Schedules Direct.
 func (c *Client) GetAvailableCountries() (map[string][]Country, error) {
-	fmt.Printf("CLIENT %+v", c)
 	url := fmt.Sprint(c.BaseURL, APIVersion, "/available/countries")
 
 	req, httpErr := http.NewRequest("GET", url, nil)
@@ -314,24 +336,16 @@ func (c *Client) AutomapLineup(hdhrLineupJSON []byte) (map[string]int, error) {
 
 // SubmitLineup should be called if AutomapLineup doesn't return candidates after you identify
 // the lineup you were trying to find via automapping.
-func (c *Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) (*BaseResponse, error) {
+func (c *Client) SubmitLineup(hdhrLineupJSON []byte, lineupID string) error {
 	url := fmt.Sprint(c.BaseURL, APIVersion, "/map/lineup/", lineupID)
 
 	req, httpErr := http.NewRequest("POST", url, bytes.NewBuffer(hdhrLineupJSON))
 	if httpErr != nil {
-		return nil, httpErr
+		return httpErr
 	}
 
-	_, data, err := c.SendRequest(req, true)
-	if err != nil {
-		return nil, err
-	}
-
-	baseR := &BaseResponse{}
-
-	err = json.Unmarshal(data, &baseR)
-
-	return baseR, err
+	_, _, err := c.SendRequest(req, true)
+	return err
 }
 
 // GetHeadends returns the map of headends for the given country and postal code.
@@ -771,9 +785,19 @@ func (c *Client) GetImageURL(imageURI string) string {
 
 // SendRequest will send the given http.Request to Schedules Direct.
 // Specify if the request requires a token via the needsToken boolean.
-func (c *Client) SendRequest(request *http.Request, needsToken bool) (*http.Response, []byte, error) {
-	if needsToken && (c == nil || c.Token == "") {
+func (c Client) SendRequest(request *http.Request, needsToken bool) (*http.Response, []byte, error) {
+	if needsToken && c.Token == "" {
 		return nil, nil, fmt.Errorf("schedules direct client has not been initialized with a token, stubbornly refusing to make a request")
+	}
+
+	// If we've had the token for more than 24 hours we need to refresh it.
+	if time.Now().After(c.TokenExpiresAt) && c.failedRequests == 0 {
+		c.failedRequests = c.failedRequests + 1
+		token, tokenErr := c.GetToken(c.username, c.password)
+		if tokenErr != nil {
+			return nil, nil, fmt.Errorf("error when attempting to automatically refresh schedules direct token after its expiration: %s", tokenErr)
+		}
+		c.Token = token
 	}
 
 	request.Header.Set("User-Agent", c.UserAgent)
@@ -787,7 +811,7 @@ func (c *Client) SendRequest(request *http.Request, needsToken bool) (*http.Resp
 
 	response, httpErr := c.HTTP.Do(request)
 	if httpErr != nil {
-		return nil, nil, fmt.Errorf("cannot reach server schedules direct service: %s", httpErr)
+		return nil, nil, fmt.Errorf("cannot reach schedules direct service: %s", httpErr)
 	}
 
 	// This is only for getting programs.
@@ -818,7 +842,17 @@ func (c *Client) SendRequest(request *http.Request, needsToken bool) (*http.Resp
 
 	baseResp := &BaseResponse{}
 	if unmarshalErr := json.Unmarshal(buf.Bytes(), baseResp); unmarshalErr == nil {
-		if baseResp.Code != 0 {
+		if baseResp.Code == ErrInvalidUser && c.failedRequests == 0 {
+			// We know that at some point the credentials were valid, so let's try running the same request again
+			// after we attempt to update the token in case it was expired due to something other than expiration.
+			c.failedRequests = c.failedRequests + 1
+			token, tokenErr := c.GetToken(c.username, c.password)
+			if tokenErr != nil {
+				return nil, nil, fmt.Errorf("error when attempting to automatically refresh schedules direct token due to caught INVALID_USER (4003): %s", tokenErr)
+			}
+			c.Token = token
+			return c.SendRequest(request, needsToken)
+		} else if baseResp.Code != 0 {
 			return nil, nil, baseResp
 		}
 	}
@@ -826,6 +860,8 @@ func (c *Client) SendRequest(request *http.Request, needsToken bool) (*http.Resp
 	if response.StatusCode > 399 {
 		return nil, nil, fmt.Errorf("status code was %d, expected 2XX-3XX. received content: %s", response.StatusCode, buf.String())
 	}
+
+	c.failedRequests = 0
 
 	return response, buf.Bytes(), nil
 }

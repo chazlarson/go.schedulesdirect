@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -27,9 +28,10 @@ func setup() {
 
 	// schedules direct client configured to use test server
 	client = &Client{
-		BaseURL: fmt.Sprint(server.URL, "/"),
-		HTTP:    http.DefaultClient,
-		Token:   "d97c908ed44c25fdca302612c70584c8d5acd47a", // token1
+		BaseURL:        fmt.Sprint(server.URL, "/"),
+		HTTP:           http.DefaultClient,
+		Token:          "d97c908ed44c25fdca302612c70584c8d5acd47a", // token1
+		TokenExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 }
 
@@ -84,6 +86,18 @@ func ensureError(t *testing.T, err error, expectedCode ErrorCode) {
 	t.Fatalf("error was not of type BaseResponse, error string is: %s", err)
 }
 
+func getBaseResponse(wantedError ErrorCode) string {
+	b, _ := json.Marshal(BaseResponse{
+		Response: wantedError.InternalCode(),
+		Code:     wantedError,
+		ServerID: "serverID1",
+		Message:  wantedError.String(),
+		DateTime: time.Now(),
+	})
+
+	return string(b)
+}
+
 func TestGetTokenOK(t *testing.T) {
 	setup()
 
@@ -98,7 +112,9 @@ func TestGetTokenOK(t *testing.T) {
 				t.Fatal(errDecode)
 			}
 
-			fmt.Fprint(w, `{"code":0,"message":"OK","serverID":"serverID1","token":"d97c908ed44c25fdca302612c70584c8d5acd47a"}`)
+			baseResp := getBaseResponse(ErrOK)
+
+			fmt.Fprintf(w, fmt.Sprintf(`%s, "token": "d97c908ed44c25fdca302612c70584c8d5acd47a"}`, baseResp[:len(baseResp)-1]))
 		},
 	)
 
@@ -120,7 +136,7 @@ func TestEncryptPassword(t *testing.T) {
 		t.Fatal(hashErr)
 	}
 	if hash != "8bb6118f8fd6935ad0876a3be34a717d32708ffd" {
-		t.Fail()
+		t.FailNow()
 	}
 
 }
@@ -139,7 +155,7 @@ func TestGetTokenInvalidUser(t *testing.T) {
 				t.Fatal(errDecode)
 			}
 
-			fmt.Fprint(w, `{"response":"INVALID_USER","code":4003,"serverID":"serverID1","message":"Invalid user.","datetime":"2014-07-29T01:00:28Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrInvalidUser))
 		},
 	)
 
@@ -165,9 +181,9 @@ func TestGetStatusOK(t *testing.T) {
 	}
 
 	if len(status.SystemStatus) != 1 {
-		t.Fail()
+		t.FailNow()
 	} else if status.SystemStatus[0].Details != "All servers running normally." {
-		t.Fail()
+		t.FailNow()
 	}
 }
 
@@ -219,7 +235,7 @@ func TestGetHeadendsFailsWithMessage(t *testing.T) {
 			ensureURLParameter(t, r, "country", "CAN")
 			ensureURLParameter(t, r, "postalcode", "H0H 0H0")
 
-			fmt.Fprint(w, `{"response":"INVALID_PARAMETER:COUNTRY","code":2050,"serverID":"serverID1","message":"The COUNTRY parameter must be ISO-3166-1 alpha 3. See http:\/\/en.wikipedia.org\/wiki\/ISO_3166-1_alpha-3","datetime":"2014-07-29T23:16:52Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrInvalidParameterCountry))
 		},
 	)
 
@@ -237,7 +253,7 @@ func TestGetHeadendsFailsWithMessage2(t *testing.T) {
 			ensureURLParameter(t, r, "country", "CAN")
 			ensureURLParameter(t, r, "postalcode", "H0H 0H0")
 
-			fmt.Fprint(w, `{"response":"REQUIRED_PARAMETER_MISSING:COUNTRY","code":2004,"serverID":"serverID1","message":"In order to search for lineups, you must supply a 3-letter country parameter.","datetime":"2014-07-29T23:15:18Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrRequiredParameterMissingCountry))
 		},
 	)
 
@@ -252,7 +268,10 @@ func TestAddLineupOK(t *testing.T) {
 		func(w http.ResponseWriter, r *http.Request) {
 			ensureMethod(t, r, "PUT")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			fmt.Fprint(w, `{"response":"OK","code":0,"serverID":"serverID1","message":"Added lineup.","changesRemaining":5,"datetime":"2014-07-30T01:50:59Z"}`)
+
+			baseResp := getBaseResponse(ErrOK)
+
+			fmt.Fprintf(w, fmt.Sprintf(`%s, "changesRemaining": "5"}`, baseResp[:len(baseResp)-1]))
 		},
 	)
 
@@ -262,7 +281,7 @@ func TestAddLineupOK(t *testing.T) {
 	}
 
 	if changeResp.ChangesRemaining != 5 {
-		t.Fail()
+		t.FailNow()
 	}
 }
 
@@ -273,7 +292,8 @@ func TestAddLineupFailsDuplicate(t *testing.T) {
 		func(w http.ResponseWriter, r *http.Request) {
 			ensureMethod(t, r, "PUT")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			fmt.Fprint(w, `{"response":"DUPLICATE_HEADEND","code":2100,"serverID":"serverID1","message":"Headend already in account.","datetime":"2014-07-30T02:01:37Z"}`)
+
+			fmt.Fprint(w, getBaseResponse(ErrDuplicateLineup))
 		},
 	)
 
@@ -289,7 +309,7 @@ func TestAddLineupFailsInvalidLineup(t *testing.T) {
 			ensureMethod(t, r, "PUT")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
-			fmt.Fprint(w, `{"response":"INVALID_LINEUP","code":2105,"serverID":"serverID1","message":"The lineup you submitted doesn't exist.","datetime":"2014-07-30T02:02:04Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrInvalidLineup))
 		},
 	)
 
@@ -300,11 +320,29 @@ func TestAddLineupFailsInvalidLineup(t *testing.T) {
 func TestAddLineupFailsInvalidUser(t *testing.T) {
 	setup()
 
+	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/token"),
+		func(w http.ResponseWriter, r *http.Request) {
+			ensureMethod(t, r, "POST")
+
+			var tokenResp TokenResponse
+
+			errDecode := json.NewDecoder(r.Body).Decode(&tokenResp)
+			if errDecode != nil {
+				t.Fatal(errDecode)
+			}
+
+			baseResp := getBaseResponse(ErrOK)
+
+			fmt.Fprintf(w, fmt.Sprintf(`%s, "token": "d97c908ed44c25fdca302612c70584c8d5acd47a"}`, baseResp[:len(baseResp)-1]))
+		},
+	)
+
 	mux.HandleFunc(fmt.Sprint("/", APIVersion, "/lineups/CAN-0000001-X"),
 		func(w http.ResponseWriter, r *http.Request) {
 			ensureMethod(t, r, "PUT")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			fmt.Fprint(w, `{"response":"INVALID_USER","code":4003,"serverID":"serverID1","message":"Invalid user.","datetime":"2014-07-30T01:48:11Z"}`)
+
+			fmt.Fprint(w, getBaseResponse(ErrInvalidUser))
 		},
 	)
 
@@ -319,7 +357,10 @@ func TestDeleteLineupOK(t *testing.T) {
 		func(w http.ResponseWriter, r *http.Request) {
 			ensureMethod(t, r, "DELETE")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			fmt.Fprint(w, `{"response":"OK","code":0,"serverID":"serverid1","message":"Deleted lineup.","changesRemaining":"5","datetime":"2014-07-30T03:27:23Z"}`)
+
+			baseResp := getBaseResponse(ErrOK)
+
+			fmt.Fprintf(w, fmt.Sprintf(`%s, "changesRemaining": "5"}`, baseResp[:len(baseResp)-1]))
 		},
 	)
 
@@ -329,7 +370,7 @@ func TestDeleteLineupOK(t *testing.T) {
 	}
 
 	if changeResp.ChangesRemaining != 5 {
-		t.Fail()
+		t.FailNow()
 	}
 }
 
@@ -341,7 +382,7 @@ func TestDeleteLineupFailsInvalidLineup(t *testing.T) {
 			ensureMethod(t, r, "DELETE")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
-			fmt.Fprint(w, `{"response":"INVALID_LINEUP","code":2105,"serverID":"serverID1","message":"The lineup you submitted doesn't exist.","datetime":"2014-07-30T02:02:04Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrInvalidLineup))
 		},
 	)
 
@@ -381,10 +422,7 @@ func TestGetLineupsFailsNoHeadends(t *testing.T) {
 			ensureMethod(t, r, "GET")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 
-			// bug with the web service?
-			http.Error(w, "", http.StatusBadRequest)
-
-			fmt.Fprint(w, `{"response":"NO_LINEUPS","code":4102,"serverID":"serverID1","message":"No lineups have been added to this account.","datetime":"2014-07-30T01:21:56Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrNoLineups))
 		},
 	)
 
@@ -426,13 +464,13 @@ func TestGetChannelsOK(t *testing.T) {
 	}
 
 	if len(channelMapping.Map) != 2 {
-		t.Fail()
+		t.FailNow()
 	}
 	if len(channelMapping.Stations) != 2 {
-		t.Fail()
+		t.FailNow()
 	}
 	if channelMapping.Metadata.Lineup != "CAN-0000000-X" {
-		t.Fail()
+		t.FailNow()
 	}
 }
 
@@ -443,7 +481,8 @@ func TestGetChannelsFailsLineupNotFound(t *testing.T) {
 		func(w http.ResponseWriter, r *http.Request) {
 			ensureMethod(t, r, "GET")
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
-			fmt.Fprint(w, `{"response":"LINEUP_NOT_FOUND","code":2101,"serverID":"serverid1","message":"Lineup not in account. Add lineup to account before requesting mapping.","datetime":"2014-07-30T04:14:27Z"}`)
+
+			fmt.Fprint(w, getBaseResponse(ErrLineupNotFound))
 		},
 	)
 
@@ -491,13 +530,13 @@ func TestGetProgramInfoOK(t *testing.T) {
 	}
 
 	if len(programs) != 2 {
-		t.Fail()
+		t.FailNow()
 	} else {
 		if programs[0].ProgramID != "program1" {
-			t.Fail()
+			t.FailNow()
 		}
 		if programs[1].ProgramID != "program2" {
-			t.Fail()
+			t.FailNow()
 		}
 	}
 }
@@ -511,7 +550,7 @@ func TestGetProgramInfoFailsRequiredRequestMissing(t *testing.T) {
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			ensurePayload(t, r, []byte(`["program1","program2"]`))
 
-			fmt.Fprint(w, `{"response":"REQUIRED_REQUEST_MISSING","code":2002,"serverID":"serverid1","message":"Did not receive request.","datetime":"2014-07-30T05:02:22Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrRequiredRequestMissing))
 		},
 	)
 
@@ -531,7 +570,7 @@ func TestGetProgramInfoFailsDeflateRequired(t *testing.T) {
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			ensurePayload(t, r, []byte(`["program1","program2"]`))
 
-			fmt.Fprint(w, `{"response":"DEFLATE_REQUIRED","code":1002,"serverID":"serverid1","message":"Did not receive Accept-Encoding: deflate in request","datetime":"2014-07-30T05:02:42Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrDeflateRequired))
 		},
 	)
 
@@ -565,21 +604,21 @@ func TestGetSchedulesOK(t *testing.T) {
 	}
 
 	if len(schedules) != 2 {
-		t.Fail()
+		t.FailNow()
 	} else {
 		if schedules[0].StationID != "10001" {
-			t.Fail()
+			t.FailNow()
 		}
 
 		if len(schedules[0].Programs) != 2 {
-			t.Fail()
+			t.FailNow()
 		}
 		if len(schedules[1].Programs) != 1 {
-			t.Fail()
+			t.FailNow()
 		}
 
 		if schedules[1].StationID != "10002" {
-			t.Fail()
+			t.FailNow()
 		}
 	}
 }
@@ -593,7 +632,7 @@ func TestGetSchedulesFailsStationNotInLineup(t *testing.T) {
 			ensureHeader(t, r, "token", "d97c908ed44c25fdca302612c70584c8d5acd47a")
 			ensurePayload(t, r, []byte(`[{"stationID":"10002"}]`))
 
-			fmt.Fprint(w, `{"stationID":10002,"response":"ERROR","code":2200,"serverID":"serverid1","message":"This stationID (10002) is not in any of your lineups.","datetime":"2014-07-30T17:14:56Z"}`)
+			fmt.Fprint(w, getBaseResponse(ErrStationIDNotFound))
 		},
 	)
 

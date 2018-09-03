@@ -103,35 +103,28 @@ func (bit *ConvertibleBoolean) UnmarshalJSON(data []byte) error {
 
 // BaseResponse contains the fields that every request is expected to return.
 type BaseResponse struct {
-	Response string     `json:"response,omitempty"`
-	Code     ErrorCode  `json:"code,omitempty"`
-	ServerID string     `json:"serverID,omitempty"`
-	Message  string     `json:"message,omitempty"`
-	DateTime *time.Time `json:"datetime,omitempty"`
+	Response string    `json:"response,omitempty"`
+	Code     ErrorCode `json:"code,omitempty"`
+	ServerID string    `json:"serverID,omitempty"`
+	Message  string    `json:"message,omitempty"`
+	DateTime time.Time `json:"datetime,omitempty"`
 }
 
 // Error returns a error string.
-func (e *BaseResponse) Error() string {
-	if e == nil {
-		return "unknown error"
-	}
-	msg := e.Message
-	if msg == "" {
-		msg = e.Response
-	}
-	return fmt.Sprintf("%s (%d)", msg, e.Code)
+func (e BaseResponse) Error() string {
+	return fmt.Sprintf("%s (message: %s, code: %d)", e.Message, e.Response, e.Code)
 }
 
 // A TokenResponse stores the response for token request.
 type TokenResponse struct {
-	BaseResponse BaseResponse
+	*BaseResponse
 
 	Token string `json:"token,omitempty"`
 }
 
 // A VersionResponse stores the response for a version request.
 type VersionResponse struct {
-	BaseResponse BaseResponse
+	*BaseResponse
 
 	Client  string `json:"client,omitempty"`
 	Version string `json:"version,omitempty"`
@@ -140,7 +133,7 @@ type VersionResponse struct {
 // A ChangeLineupResponse stores the message after attempting
 // to add or delete a lineup.
 type ChangeLineupResponse struct {
-	BaseResponse BaseResponse
+	*BaseResponse
 
 	ChangesRemaining jsonInt `json:"changesRemaining,omitempty"`
 }
@@ -148,7 +141,7 @@ type ChangeLineupResponse struct {
 // A LineupResponse stores the message after requesting
 // to list subscribed lineups.
 type LineupResponse struct {
-	BaseResponse BaseResponse
+	*BaseResponse
 
 	Lineups []Lineup `json:"lineups,omitempty"`
 }
@@ -156,18 +149,13 @@ type LineupResponse struct {
 // A StatusResponse stores the message after requesting system
 // status.  SystemStatus[0].Status should be "Online" before proceeding.
 type StatusResponse struct {
+	*BaseResponse
+
 	Account        *AccountInfo `json:"account,omitempty"`
 	Lineups        []Lineup     `json:"lineups,omitempty"`
 	LastDataUpdate time.Time    `json:"lastDataUpdate,omitempty"`
 	Notifications  []string     `json:"notifications,omitempty"`
 	SystemStatus   []Status     `json:"systemStatus,omitempty"`
-}
-
-// A StatusError struct stores the error response to a status request.
-type StatusError struct {
-	BaseResponse BaseResponse
-
-	Token string `json:"token,omitempty"`
 }
 
 // A Status stores the message system status information
@@ -310,7 +298,7 @@ type LastModifiedEntry struct {
 
 // LanguageCrossReference provides translated titles and descriptions for a program.
 type LanguageCrossReference struct {
-	BaseResponse BaseResponse
+	*BaseResponse
 
 	DescriptionLanguage     string `json:"descriptionLanguage,omitempty"`
 	DescriptionLanguageName string `json:"descriptionLanguageName,omitempty"`
@@ -322,7 +310,7 @@ type LanguageCrossReference struct {
 
 // A StillRunningResponse describes the current real time state of a program.
 type StillRunningResponse struct {
-	BaseResponse BaseResponse
+	*BaseResponse
 
 	EventStartDateTime *time.Time `json:"eventStartDateTime,omitempty"`
 	IsComplete         bool       `json:"isComplete,omitempty"`
