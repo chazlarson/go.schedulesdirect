@@ -7,9 +7,8 @@ jobs:
     working_directory: /go/src/github.com/tellytv/go.schedulesdirect
     steps:
       - checkout
-      - run: curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
       - run: go get -u github.com/alecthomas/gometalinter
       - run: gometalinter --install
-      - run: dep ensure -vendor-only
+      - run: go get -v -t -d ./...
       - run: go test -v ./...
       - run: gometalinter --config=.gometalinter.json ./...
